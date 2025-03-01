@@ -236,9 +236,13 @@ class OpenAIProvider(LLMProvider):
         return text
 
 # Anthropic/Claude provider
-class AnthropicProvider(LLMProvider):
+
+
+# Local LLM provider via Hugging Face
+class HuggingFaceProvider(LLMProvider):
+    """Hugging Face local LLM provider"""class AnthropicProvider(LLMProvider):
     """Anthropic/Claude API provider"""
-    def __init__(self, api_key=None):
+    def __init__(self, api_key=None):  # Changed from **init** to __init__
         super().__init__()
         self.name = "Anthropic/Claude"
         self.available = ANTHROPIC_AVAILABLE
@@ -315,10 +319,6 @@ class AnthropicProvider(LLMProvider):
                 return detailed_error
             else:
                 return f"Error with Anthropic/Claude analysis: {str(e)}"
-
-# Local LLM provider via Hugging Face
-class HuggingFaceProvider(LLMProvider):
-    """Hugging Face local LLM provider"""
     def __init__(self, api_key=None):
         super().__init__()
         self.name = "Hugging Face"
