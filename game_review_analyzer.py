@@ -679,7 +679,7 @@ class EnhancedGameReviewAnalyzer:
         language : str
             Language code (default: 'en')
         max_reviews : int
-            Maximum number of reviews to fetch (default: 5000)
+            Maximum number of reviews to fetch (default: 25000)
             
         Returns:
         --------
@@ -1486,11 +1486,11 @@ def create_app_ui():
             app_store_url = st.text_input("App Store URL", "https://apps.apple.com/us/app/triple-match-city/id6450110217")
             google_play_url = st.text_input("Google Play URL", "https://play.google.com/store/apps/details?id=com.rc.cityCleaner")
             
-            country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], index=0)
+            country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], ind500ex=0)
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
             # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 25000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
@@ -1537,7 +1537,7 @@ def create_app_ui():
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
             # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 25000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
