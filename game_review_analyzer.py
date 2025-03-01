@@ -1,7 +1,7 @@
 """
-Mobile Game Review Analysis Tool
---------------------------------
-A tool to analyze App Store and Google Play reviews of competing games to gain insights for game development.
+Enhanced Mobile Game Review Analysis Tool
+----------------------------------------
+A tool to analyze App Store and Google Play reviews with advanced LLM insights.
 """
 
 import os
@@ -21,23 +21,20 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import textwrap
+
+# Basic NLTK setup (keeping this for broad classification and filtering)
+import nltk
+nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
+os.makedirs(nltk_data_dir, exist_ok=True)
+nltk.data.path.append(nltk_data_dir)
 
 # Initialize session state if needed
 if 'nltk_initialized' not in st.session_state:
     st.session_state.nltk_initialized = False
-    
-# CRITICAL FIX: NLTK initialization with error prevention
-import nltk
 
-# Only initialize NLTK once per session to prevent hanging
+# CRITICAL FIX: NLTK initialization with error prevention
 if not st.session_state.nltk_initialized:
-    # Create a directory for NLTK data in the current working directory
-    nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
-    os.makedirs(nltk_data_dir, exist_ok=True)
-    
-    # Set the NLTK data path
-    nltk.data.path.append(nltk_data_dir)
-    
     # Function to safely check if a package is already downloaded
     def is_package_downloaded(package_name):
         if package_name == 'punkt':
@@ -60,7 +57,6 @@ if not st.session_state.nltk_initialized:
         st.session_state.nltk_initialized = True
     except Exception as e:
         print(f"Error downloading NLTK packages: {e}")
-        # Continue execution even if download fails
 
 # Global try-except for NLTK imports to prevent crashes
 try:
@@ -72,7 +68,6 @@ try:
 except Exception as e:
     print(f"NLTK import error: {e}")
     NLTK_AVAILABLE = False
-    # Define fallback functions and classes
     class DummySentimentAnalyzer:
         def polarity_scores(self, text):
             return {'compound': 0, 'pos': 0, 'neu': 1, 'neg': 0, 'sentiment': 'neutral'}
@@ -91,6 +86,7 @@ except Exception as e:
 # Import scikit-learn components
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.cluster import KMeans
 
 # Import WordCloud with error handling
 try:
@@ -98,7 +94,6 @@ try:
     WORDCLOUD_AVAILABLE = True
 except ImportError:
     WORDCLOUD_AVAILABLE = False
-    # Dummy WordCloud class that does nothing
     class DummyWordCloud:
         def __init__(self, *args, **kwargs):
             pass
@@ -114,11 +109,409 @@ try:
     GOOGLE_PLAY_SCRAPER_AVAILABLE = True
 except ImportError:
     GOOGLE_PLAY_SCRAPER_AVAILABLE = False
-    # Will need to handle missing scraper in the code
 
+# Check for OpenAI availability for advanced analysis
+try:
+    import openai
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
-class MobileGameReviewAnalyzer:
-    """Main class for analyzing App Store and Google Play Store reviews"""
+# Check for Anthropic/Claude availability
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+
+# Import for local language model support
+try:
+    from langchain import PromptTemplate, LLMChain
+    from langchain_community.llms import HuggingFaceHub, HuggingFacePipeline
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+    
+# Define a base class for LLM providers
+class LLMProvider:
+    """Base class for LLM providers"""
+    def __init__(self):
+        self.name = "Base LLM Provider"
+        self.available = False
+        
+    def analyze(self, reviews, query):
+        """Generic analyze method to be implemented by subclasses"""
+        return "LLM analysis not available"
+        
+    def is_available(self):
+        return self.available
+
+# OpenAI provider
+class OpenAIProvider(LLMProvider):
+    """OpenAI API provider"""
+    def __init__(self, api_key=None):
+        super().__init__()
+        self.name = "OpenAI"
+        self.available = OPENAI_AVAILABLE
+        self.api_key = api_key
+        self.client = None
+        
+        if self.available and api_key:
+            try:
+                self.client = OpenAI(api_key=api_key)
+                self.available = True
+            except Exception as e:
+                print(f"Error initializing OpenAI client: {e}")
+                self.available = False
+                
+    def analyze(self, reviews, query):
+        """Analyze reviews using OpenAI"""
+        if not self.available or not self.client:
+            return "OpenAI API not available or not configured properly."
+            
+        # Prepare the reviews as context
+        review_text = self._prepare_review_sample(reviews)
+        
+        # Create the prompt
+        prompt = f"""
+        You are an expert game analyst helping a game developer understand player feedback.
+        Analyze the following game reviews to answer: {query}
+        
+        REVIEWS:
+        {review_text}
+        
+        Provide a detailed, insightful analysis that would help a game developer understand 
+        player preferences and pain points. Focus on specific aspects of the game, not general comments.
+        Organize your analysis with clear sections and concrete examples from the reviews.
+        """
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert game analyst with experience in understanding player feedback."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"Error with OpenAI analysis: {str(e)}"
+    
+    def _prepare_review_sample(self, reviews, max_reviews=100, max_length=8000):
+        """Prepare a representative sample of reviews as context"""
+        # Get a mix of positive, negative, and neutral reviews
+        sample_reviews = []
+        
+        # Get positive reviews (highest rated)
+        positive_reviews = reviews[reviews['rating'] >= 4].sample(min(max_reviews//3, len(reviews[reviews['rating'] >= 4])))
+        
+        # Get negative reviews (lowest rated)
+        negative_reviews = reviews[reviews['rating'] <= 2].sample(min(max_reviews//3, len(reviews[reviews['rating'] <= 2])))
+        
+        # Get neutral reviews
+        neutral_reviews = reviews[reviews['rating'] == 3].sample(min(max_reviews//3, len(reviews[reviews['rating'] == 3])))
+        
+        # Combine samples
+        sample = pd.concat([positive_reviews, negative_reviews, neutral_reviews])
+        
+        # Format reviews
+        formatted_reviews = []
+        for i, row in sample.iterrows():
+            rating = f"{row['rating']}⭐"
+            source = row['store']
+            content = row['content']
+            formatted = f"[{rating} - {source}]: {content}"
+            formatted_reviews.append(formatted)
+        
+        text = "\n\n".join(formatted_reviews)
+        
+        # Truncate if too long
+        if len(text) > max_length:
+            text = text[:max_length] + "... [truncated]"
+            
+        return text
+
+# Anthropic/Claude provider
+class AnthropicProvider(LLMProvider):
+    """Anthropic/Claude API provider"""
+    def __init__(self, api_key=None):
+        super().__init__()
+        self.name = "Anthropic/Claude"
+        self.available = ANTHROPIC_AVAILABLE
+        self.api_key = api_key
+        self.client = None
+        
+        if self.available and api_key:
+            try:
+                self.client = anthropic.Anthropic(api_key=api_key)
+                self.available = True
+            except Exception as e:
+                print(f"Error initializing Anthropic client: {e}")
+                self.available = False
+                
+    def analyze(self, reviews, query):
+        """Analyze reviews using Anthropic/Claude"""
+        if not self.available or not self.client:
+            return "Anthropic/Claude API not available or not configured properly."
+            
+        # Prepare the reviews as context
+        review_text = self._prepare_review_sample(reviews)
+        
+        # Create the prompt
+        prompt = f"""
+        You are an expert game analyst helping a game developer understand player feedback.
+        Analyze the following game reviews to answer: {query}
+        
+        REVIEWS:
+        {review_text}
+        
+        Provide a detailed, insightful analysis that would help a game developer understand 
+        player preferences and pain points. Focus on specific aspects of the game, not general comments.
+        Organize your analysis with clear sections and concrete examples from the reviews.
+        """
+        
+        try:
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                temperature=0.3,
+                system="You are an expert game analyst with experience in understanding player feedback.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.content[0].text
+        except Exception as e:
+            return f"Error with Anthropic/Claude analysis: {str(e)}"
+    
+    def _prepare_review_sample(self, reviews, max_reviews=100, max_length=8000):
+        """Prepare a representative sample of reviews as context"""
+        # Get a mix of positive, negative, and neutral reviews
+        sample_reviews = []
+        
+        # Get positive reviews (highest rated)
+        positive_reviews = reviews[reviews['rating'] >= 4].sample(min(max_reviews//3, len(reviews[reviews['rating'] >= 4])))
+        
+        # Get negative reviews (lowest rated)
+        negative_reviews = reviews[reviews['rating'] <= 2].sample(min(max_reviews//3, len(reviews[reviews['rating'] <= 2])))
+        
+        # Get neutral reviews
+        neutral_reviews = reviews[reviews['rating'] == 3].sample(min(max_reviews//3, len(reviews[reviews['rating'] == 3])))
+        
+        # Combine samples
+        sample = pd.concat([positive_reviews, negative_reviews, neutral_reviews])
+        
+        # Format reviews
+        formatted_reviews = []
+        for i, row in sample.iterrows():
+            rating = f"{row['rating']}⭐"
+            source = row['store']
+            content = row['content']
+            formatted = f"[{rating} - {source}]: {content}"
+            formatted_reviews.append(formatted)
+        
+        text = "\n\n".join(formatted_reviews)
+        
+        # Truncate if too long
+        if len(text) > max_length:
+            text = text[:max_length] + "... [truncated]"
+            
+        return text
+
+# Local LLM provider via Hugging Face
+class HuggingFaceProvider(LLMProvider):
+    """Hugging Face local LLM provider"""
+    def __init__(self, api_key=None):
+        super().__init__()
+        self.name = "Hugging Face"
+        self.available = LANGCHAIN_AVAILABLE
+        self.api_key = api_key
+        self.client = None
+        
+        if self.available and api_key:
+            try:
+                self.client = HuggingFaceHub(
+                    huggingfacehub_api_token=api_key,
+                    repo_id="google/flan-t5-large",
+                    model_kwargs={"temperature": 0.5, "max_length": 512}
+                )
+                self.available = True
+            except Exception as e:
+                print(f"Error initializing Hugging Face client: {e}")
+                self.available = False
+                
+    def analyze(self, reviews, query):
+        """Analyze reviews using Hugging Face models"""
+        if not self.available or not self.client:
+            return "Hugging Face API not available or not configured properly."
+            
+        # Prepare the reviews as context (smaller sample due to context limitations)
+        review_text = self._prepare_review_sample(reviews, max_reviews=20, max_length=2000)
+        
+        # Create the prompt template
+        template = """
+        Task: Analyze game reviews to answer: {query}
+        
+        Reviews:
+        {review_text}
+        
+        Analysis:
+        """
+        
+        prompt = PromptTemplate(
+            input_variables=["query", "review_text"],
+            template=template
+        )
+        
+        try:
+            llm_chain = LLMChain(prompt=prompt, llm=self.client)
+            response = llm_chain.run(query=query, review_text=review_text)
+            return response
+        except Exception as e:
+            return f"Error with Hugging Face analysis: {str(e)}"
+    
+    def _prepare_review_sample(self, reviews, max_reviews=20, max_length=2000):
+        """Prepare a smaller sample of reviews due to context limitations"""
+        # Get a mix of positive, negative, and neutral reviews
+        sample_reviews = []
+        
+        # Get positive reviews (highest rated)
+        positive_reviews = reviews[reviews['rating'] >= 4].sample(min(max_reviews//3, len(reviews[reviews['rating'] >= 4])))
+        
+        # Get negative reviews (lowest rated)
+        negative_reviews = reviews[reviews['rating'] <= 2].sample(min(max_reviews//3, len(reviews[reviews['rating'] <= 2])))
+        
+        # Get neutral reviews
+        neutral_reviews = reviews[reviews['rating'] == 3].sample(min(max_reviews//3, len(reviews[reviews['rating'] == 3])))
+        
+        # Combine samples
+        sample = pd.concat([positive_reviews, negative_reviews, neutral_reviews])
+        
+        # Format reviews (simpler format for context efficiency)
+        formatted_reviews = []
+        for i, row in sample.iterrows():
+            rating = f"{row['rating']}⭐"
+            content = row['content']
+            formatted = f"[{rating}]: {content}"
+            formatted_reviews.append(formatted)
+        
+        text = "\n".join(formatted_reviews)
+        
+        # Truncate if too long
+        if len(text) > max_length:
+            text = text[:max_length] + "... [truncated]"
+            
+        return text
+
+# Simple mock provider for when no LLM services are available
+class MockLLMProvider(LLMProvider):
+    """Local mock LLM provider that uses rule-based summarization"""
+    def __init__(self):
+        super().__init__()
+        self.name = "Local Analysis"
+        self.available = True
+        
+    def analyze(self, reviews, query):
+        """Provide a simple analysis based on rating distributions and keywords"""
+        result = "# Game Review Analysis\n\n"
+        
+        # Add rating distribution summary
+        rating_counts = reviews['rating'].value_counts().sort_index()
+        total_reviews = len(reviews)
+        
+        result += "## Rating Distribution\n\n"
+        for rating, count in rating_counts.items():
+            percentage = (count / total_reviews) * 100
+            result += f"- {rating}⭐: {count} reviews ({percentage:.1f}%)\n"
+        
+        # Summarize positive reviews
+        positive_reviews = reviews[reviews['rating'] >= 4]
+        if len(positive_reviews) > 0:
+            result += "\n## What Players Like\n\n"
+            
+            # Extract common words from positive reviews
+            positive_text = " ".join(positive_reviews['content'].fillna(''))
+            common_positive = self._extract_common_words(positive_text)
+            
+            # Sample a few positive reviews
+            sample_positive = positive_reviews.sample(min(3, len(positive_reviews)))
+            
+            result += "Common positive themes: " + ", ".join(common_positive) + "\n\n"
+            result += "Example positive reviews:\n\n"
+            
+            for _, review in sample_positive.iterrows():
+                result += f"- \"{self._truncate_text(review['content'], 150)}\"\n"
+        
+        # Summarize negative reviews
+        negative_reviews = reviews[reviews['rating'] <= 2]
+        if len(negative_reviews) > 0:
+            result += "\n## What Players Dislike\n\n"
+            
+            # Extract common words from negative reviews
+            negative_text = " ".join(negative_reviews['content'].fillna(''))
+            common_negative = self._extract_common_words(negative_text)
+            
+            # Sample a few negative reviews
+            sample_negative = negative_reviews.sample(min(3, len(negative_reviews)))
+            
+            result += "Common negative themes: " + ", ".join(common_negative) + "\n\n"
+            result += "Example negative reviews:\n\n"
+            
+            for _, review in sample_negative.iterrows():
+                result += f"- \"{self._truncate_text(review['content'], 150)}\"\n"
+        
+        # Add suggestions section based on negative reviews
+        result += "\n## Suggested Improvements\n\n"
+        result += "Based on negative reviews, consider improving:\n\n"
+        
+        # Simple rule-based suggestions
+        suggestions = [
+            "Game performance and stability if users mention crashes or bugs",
+            "Monetization model if users mention pay-to-win or expensive items",
+            "Game balance if users mention difficulty spikes or unfair gameplay",
+            "Tutorial and onboarding if new users seem confused",
+            "Content updates if users mention repetitive gameplay"
+        ]
+        
+        for suggestion in suggestions:
+            result += f"- {suggestion}\n"
+            
+        result += "\n*Note: This is a simplified analysis. For more accurate results, consider using an LLM service.*"
+        
+        return result
+    
+    def _extract_common_words(self, text, n=5):
+        """Extract common meaningful words from text"""
+        # Simple word frequency analysis
+        words = re.findall(r'\b[a-zA-Z]{4,}\b', text.lower())
+        
+        # Filter common English stopwords
+        stopwords = {'game', 'this', 'that', 'with', 'have', 'from', 'they', 'will', 'would', 'there', 'their', 'what', 'about', 'which'}
+        filtered_words = [w for w in words if w not in stopwords]
+        
+        # Get most common words
+        word_counts = Counter(filtered_words)
+        common_words = [word for word, count in word_counts.most_common(n)]
+        
+        return common_words
+        
+    def _truncate_text(self, text, max_length=150):
+        """Truncate text to a certain length"""
+        if not isinstance(text, str):
+            return ""
+        
+        if len(text) <= max_length:
+            return text
+        
+        return text[:max_length] + "..."
+
+# Main review analyzer class
+class EnhancedGameReviewAnalyzer:
+    """Enhanced class for analyzing App Store and Google Play Store reviews with LLM insights"""
     
     def __init__(self):
         # Initialize NLP components with fallbacks if necessary
@@ -140,6 +533,45 @@ class MobileGameReviewAnalyzer:
             self.stop_words = set()
             self.lemmatizer = SimpleWordNetLemmatizer()
             self.sentiment_analyzer = DummySentimentAnalyzer()
+        
+        # Initialize LLM providers
+        self.openai_provider = None
+        self.anthropic_provider = None
+        self.huggingface_provider = None
+        self.mock_provider = MockLLMProvider()
+        
+        # Default to mock provider
+        self.llm_provider = self.mock_provider
+    
+    # Setup LLM providers
+    def setup_llm_provider(self, provider_name, api_key=None):
+        """Set up the LLM provider with the given API key"""
+        if provider_name == "openai" and OPENAI_AVAILABLE:
+            self.openai_provider = OpenAIProvider(api_key)
+            if self.openai_provider.is_available():
+                self.llm_provider = self.openai_provider
+                return True
+        elif provider_name == "anthropic" and ANTHROPIC_AVAILABLE:
+            self.anthropic_provider = AnthropicProvider(api_key)
+            if self.anthropic_provider.is_available():
+                self.llm_provider = self.anthropic_provider
+                return True
+        elif provider_name == "huggingface" and LANGCHAIN_AVAILABLE:
+            self.huggingface_provider = HuggingFaceProvider(api_key)
+            if self.huggingface_provider.is_available():
+                self.llm_provider = self.huggingface_provider
+                return True
+        elif provider_name == "mock":
+            self.llm_provider = self.mock_provider
+            return True
+        
+        # Fallback to mock provider
+        self.llm_provider = self.mock_provider
+        return False
+    
+    def perform_llm_analysis(self, reviews_df, query="Why do players like or dislike this game?"):
+        """Use the configured LLM to analyze review data"""
+        return self.llm_provider.analyze(reviews_df, query)
     
     def extract_app_id_from_url(self, url):
         """
@@ -611,6 +1043,77 @@ class MobileGameReviewAnalyzer:
             # Return empty dataframe with expected columns
             return pd.DataFrame(columns=['feature', 'count', 'percentage'])
     
+    def cluster_reviews(self, reviews_df, n_clusters=5):
+        """
+        Cluster reviews into groups using K-means
+        
+        Parameters:
+        -----------
+        reviews_df : pandas.DataFrame
+            DataFrame containing reviews
+        n_clusters : int
+            Number of clusters to extract (default: 5)
+            
+        Returns:
+        --------
+        pandas.DataFrame
+            DataFrame with cluster assignments and centroids
+        """
+        try:
+            # Combine title and content and preprocess
+            reviews_df['processed_text'] = reviews_df['title'].fillna('') + ' ' + reviews_df['content'].fillna('')
+            reviews_df['processed_text'] = reviews_df['processed_text'].apply(self.preprocess_text)
+            
+            # Filter out empty texts
+            non_empty_mask = reviews_df['processed_text'].str.strip() != ''
+            filtered_df = reviews_df.loc[non_empty_mask].copy()
+            
+            if len(filtered_df) < n_clusters:
+                print("Not enough valid texts for clustering")
+                return reviews_df
+            
+            # Create TF-IDF matrix
+            vectorizer = TfidfVectorizer(max_df=0.95, min_df=2, max_features=1000)
+            tfidf_matrix = vectorizer.fit_transform(filtered_df['processed_text'])
+            
+            # Apply K-means clustering
+            km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+            filtered_df['cluster'] = km.fit_predict(tfidf_matrix)
+            
+            # Get cluster centers and top terms
+            centroids = km.cluster_centers_
+            feature_names = vectorizer.get_feature_names_out()
+            
+            # For each cluster, get the top terms
+            top_terms_per_cluster = []
+            for i in range(n_clusters):
+                centroid = centroids[i]
+                # Get the top 10 terms for this cluster
+                indices = centroid.argsort()[-10:][::-1]
+                top_terms = [feature_names[j] for j in indices]
+                top_terms_per_cluster.append(top_terms)
+            
+            # Add cluster descriptions to the dataframe
+            cluster_descriptions = {}
+            for i, terms in enumerate(top_terms_per_cluster):
+                cluster_descriptions[i] = ', '.join(terms)
+            
+            # Map the cluster labels to the descriptions
+            filtered_df['cluster_description'] = filtered_df['cluster'].map(cluster_descriptions)
+            
+            # Merge cluster information back into the original dataframe
+            reviews_df = reviews_df.merge(
+                filtered_df[['id', 'cluster', 'cluster_description']], 
+                on='id', 
+                how='left'
+            )
+            
+            return reviews_df
+        
+        except Exception as e:
+            print(f"Error in clustering: {e}")
+            return reviews_df
+    
     def analyze_reviews(self, app_name, stores=None, country='us', language='en', max_reviews=2000):
         """
         Main function to analyze reviews for an app from App Store and/or Google Play
@@ -681,6 +1184,19 @@ class MobileGameReviewAnalyzer:
         features_df = self.identify_key_features(reviews_df)
         features_status.empty()
         
+        # Cluster reviews
+        cluster_status = st.empty()
+        cluster_status.text("Clustering reviews...")
+        reviews_df = self.cluster_reviews(reviews_df)
+        cluster_status.empty()
+        
+        # Perform LLM analysis
+        llm_status = st.empty()
+        llm_status.text("Performing deep analysis of review patterns...")
+        default_query = "What are the main reasons players like or dislike this game? What specific aspects do they praise or criticize?"
+        llm_analysis = self.perform_llm_analysis(reviews_df, default_query)
+        llm_status.empty()
+        
         # Prepare results
         results = {
             "app_name": app_name,
@@ -692,6 +1208,7 @@ class MobileGameReviewAnalyzer:
             "reviews_df": reviews_df,
             "topics_df": topics_df,
             "features_df": features_df,
+            "llm_analysis": llm_analysis,
             "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
@@ -807,6 +1324,19 @@ class MobileGameReviewAnalyzer:
         features_df = self.identify_key_features(reviews_df)
         features_status.empty()
         
+        # Cluster reviews
+        cluster_status = st.empty()
+        cluster_status.text("Clustering reviews...")
+        reviews_df = self.cluster_reviews(reviews_df)
+        cluster_status.empty()
+        
+        # Perform LLM analysis
+        llm_status = st.empty()
+        llm_status.text("Performing deep analysis of review patterns...")
+        default_query = "What are the main reasons players like or dislike this game? What specific aspects do they praise or criticize?"
+        llm_analysis = self.perform_llm_analysis(reviews_df, default_query)
+        llm_status.empty()
+        
         # Prepare results
         results = {
             "app_name": app_name,
@@ -818,6 +1348,7 @@ class MobileGameReviewAnalyzer:
             "reviews_df": reviews_df,
             "topics_df": topics_df,
             "features_df": features_df,
+            "llm_analysis": llm_analysis,
             "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
@@ -866,20 +1397,20 @@ class MobileGameReviewAnalyzer:
 # Streamlit UI for the analyzer
 def create_app_ui():
     st.set_page_config(
-        page_title="Mobile Game Review Analyzer",
-        page_icon="📱",
+        page_title="Game Review Analysis with AI",
+        page_icon="🎮",
         layout="wide"
     )
     
-    st.title("📱 Mobile Game Review Analyzer")
-    st.write("Analyze App Store and Google Play reviews of competing games to gain insights")
+    st.title("🎮 Game Review Analysis with AI")
+    st.write("Analyze App Store and Google Play reviews of competing games with advanced AI insights")
     
     # Show availability of components
     with st.expander("System Status", expanded=False):
         if NLTK_AVAILABLE:
-            st.success("✅ NLP components available - Sentiment analysis and text processing enabled")
+            st.success("✅ NLP components available - Basic text processing enabled")
         else:
-            st.warning("⚠️ NLP components not available - Using basic text processing")
+            st.warning("⚠️ NLP components not available - Using simplified text processing")
             
         if WORDCLOUD_AVAILABLE:
             st.success("✅ WordCloud available - Word cloud visualization enabled")
@@ -890,14 +1421,66 @@ def create_app_ui():
             st.success("✅ Google Play Scraper available - Google Play analysis enabled")
         else:
             st.warning("⚠️ Google Play Scraper not available - Google Play analysis disabled")
+            
+        if OPENAI_AVAILABLE:
+            st.success("✅ OpenAI package available - Can use OpenAI for advanced analysis")
+        else:
+            st.info("ℹ️ OpenAI package not installed - Install with: pip install openai")
+            
+        if ANTHROPIC_AVAILABLE:
+            st.success("✅ Anthropic package available - Can use Claude for advanced analysis")
+        else:
+            st.info("ℹ️ Anthropic package not installed - Install with: pip install anthropic")
+            
+        if LANGCHAIN_AVAILABLE:
+            st.success("✅ LangChain available - Can use Hugging Face models for analysis")
+        else:
+            st.info("ℹ️ LangChain not installed - Install with: pip install langchain langchain_community")
     
     # Initialize analyzer
-    analyzer = MobileGameReviewAnalyzer()
+    analyzer = EnhancedGameReviewAnalyzer()
     
-    # Sidebar tabs for input methods
+    # Sidebar tabs for input methods and settings
     with st.sidebar:
         st.header("Analysis Parameters")
-        input_method = st.radio("Select Input Method", ["Direct URLs", "App Name Search"])
+        
+        # LLM Provider selection
+        st.subheader("AI Analysis Settings")
+        
+        llm_provider = st.selectbox(
+            "LLM Provider for Advanced Analysis",
+            options=["Local Analysis", "OpenAI", "Anthropic/Claude", "Hugging Face"],
+            index=0,
+            help="Select which AI system to use for deeper analysis of reviews. 'Local Analysis' doesn't require an API key."
+        )
+        
+        # Show API key input if needed
+        api_key = None
+        if llm_provider != "Local Analysis":
+            api_key = st.text_input(
+                f"{llm_provider} API Key", 
+                type="password",
+                help=f"Enter your {llm_provider} API key. This is not stored anywhere beyond this session."
+            )
+            
+            # Configure LLM provider
+            provider_name_map = {
+                "OpenAI": "openai",
+                "Anthropic/Claude": "anthropic",
+                "Hugging Face": "huggingface",
+                "Local Analysis": "mock"
+            }
+            
+            provider_configured = analyzer.setup_llm_provider(provider_name_map[llm_provider], api_key)
+            
+            if api_key and not provider_configured:
+                st.warning(f"Could not initialize {llm_provider} provider. Using local analysis instead.")
+        else:
+            # Use mock provider by default
+            analyzer.setup_llm_provider("mock")
+        
+        # Analysis type and inputs
+        input_method = st.radio("Game Selection Method", ["Direct URLs", "App Name Search"])
         
         if input_method == "Direct URLs":
             app_store_url = st.text_input("App Store URL", "https://apps.apple.com/us/app/triple-match-city/id6450110217")
@@ -1022,30 +1605,9 @@ def create_app_ui():
                 except Exception as e:
                     st.error(f"Error exporting CSV: {str(e)}")
         
-        # Create a pie chart for store distribution
-        store_dist = results.get('store_distribution', {})
-        if store_dist:
-            store_df = pd.DataFrame({
-                'Store': list(store_dist.keys()),
-                'Reviews': list(store_dist.values())
-            })
-            
-            fig = px.pie(
-                store_df, 
-                names='Store', 
-                values='Reviews',
-                title='Review Distribution by Store',
-                color='Store',
-                color_discrete_map={
-                    'App Store': '#0099ff',
-                    'Google Play': '#3ddc84'
-                }
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-        
         # Create tabs for different analyses
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            "AI Insights", 
             "Sentiment Analysis", 
             "Store Comparison",
             "Feature Breakdown", 
@@ -1055,6 +1617,33 @@ def create_app_ui():
         ])
         
         with tab1:
+            st.subheader("AI-Powered Review Analysis")
+            
+            # Display the LLM analysis
+            if "llm_analysis" in results:
+                st.markdown(results["llm_analysis"])
+                
+                # Custom analysis query
+                st.write("---")
+                st.subheader("Ask a Custom Question")
+                
+                custom_query = st.text_input(
+                    "What would you like to know about the game based on these reviews?",
+                    "What features would I need to include in a competing game to attract these users?"
+                )
+                
+                if st.button("Analyze"):
+                    with st.spinner("Analyzing..."):
+                        try:
+                            reviews_df = results['reviews_df']
+                            custom_analysis = analyzer.perform_llm_analysis(reviews_df, custom_query)
+                            st.markdown(custom_analysis)
+                        except Exception as e:
+                            st.error(f"Error during custom analysis: {str(e)}")
+            else:
+                st.write("Advanced analysis not available. Please re-run the analysis.")
+        
+        with tab2:
             st.subheader("Sentiment Distribution")
             
             reviews_df = results['reviews_df']
@@ -1162,7 +1751,7 @@ def create_app_ui():
             except Exception as e:
                 st.error(f"Error creating sentiment trend chart: {e}")
             
-        with tab2:
+        with tab3:
             st.subheader("App Store vs Google Play Comparison")
             
             reviews_df = results['reviews_df']
@@ -1277,7 +1866,7 @@ def create_app_ui():
             else:
                 st.write("Comparison not available - reviews from only one store were found.")
                 
-        with tab3:
+        with tab4:
             st.subheader("Feature Mentions")
             
             features_df = results['features_df']
@@ -1438,7 +2027,7 @@ def create_app_ui():
             else:
                 st.info("No features were extracted. This may be due to insufficient review data.")
             
-        with tab4:
+        with tab5:
             st.subheader("Topic Analysis")
             
             topics_df = results['topics_df']
@@ -1450,17 +2039,58 @@ def create_app_ui():
                 # Find example reviews for each topic
                 st.subheader("Example Reviews by Topic")
                 
-                # TBD: This would require saving the topic-document matrix
-                st.write("Select a topic to see example reviews")
-                topic_idx = st.selectbox("Topic", range(1, len(topics_df) + 1), format_func=lambda x: f"Topic {x}")
+                # Check if we have cluster information
+                if 'cluster' in reviews_df.columns:
+                    cluster_counts = reviews_df['cluster'].value_counts().reset_index()
+                    cluster_counts.columns = ['Cluster', 'Count']
+                    
+                    # Show cluster descriptions
+                    st.subheader("Review Clusters")
+                    
+                    for cluster in sorted(reviews_df['cluster'].dropna().unique()):
+                        # Get the description
+                        cluster_desc = reviews_df[reviews_df['cluster'] == cluster]['cluster_description'].iloc[0]
+                        count = len(reviews_df[reviews_df['cluster'] == cluster])
+                        
+                        # Display cluster info
+                        st.write(f"**Cluster {int(cluster)+1}** ({count} reviews): {cluster_desc}")
+                        
+                        # Show sample reviews
+                        with st.expander(f"Sample reviews from Cluster {int(cluster)+1}"):
+                            sample = reviews_df[reviews_df['cluster'] == cluster].sample(min(3, count))
+                            for _, review in sample.iterrows():
+                                st.write(f"**{review['rating']}⭐** - {review['content']}")
+                                st.write("---")
                 
-                # Placeholder for topic examples
-                st.write("Example reviews would be shown here")
+                # Provide option to see reviews by topic
+                topic_idx = st.selectbox("Select a topic to see related reviews", range(1, len(topics_df) + 1), format_func=lambda x: f"Topic {x}")
                 
+                # Generate example reviews based on top words
+                if topic_idx and topic_idx <= len(topics_df):
+                    topic_words = topics_df.iloc[topic_idx-1]['top_words']
+                    
+                    # Find reviews containing these topic words
+                    topic_reviews = []
+                    for word in topic_words[:5]:  # Use top 5 words to find relevant reviews
+                        word_reviews = reviews_df[reviews_df['content'].str.contains(word, case=False, na=False)]
+                        topic_reviews.extend(word_reviews['id'].tolist())
+                    
+                    # Get unique review IDs and sample a few
+                    unique_review_ids = list(set(topic_reviews))
+                    
+                    if unique_review_ids:
+                        sample_ids = unique_review_ids[:min(5, len(unique_review_ids))]
+                        sample_reviews = reviews_df[reviews_df['id'].isin(sample_ids)]
+                        
+                        for _, review in sample_reviews.iterrows():
+                            st.write(f"**{review['rating']}⭐ - {review['store']}** - {review['content']}")
+                            st.write("---")
+                    else:
+                        st.write("No reviews found for this topic.")
             else:
                 st.write("No topics were extracted. Try increasing the number of reviews.")
             
-        with tab5:
+        with tab6:
             st.subheader("Word Clouds")
             
             if not WORDCLOUD_AVAILABLE:
@@ -1532,7 +2162,7 @@ def create_app_ui():
                         else:
                             st.write("No negative reviews found.")
             
-        with tab6:
+        with tab7:
             st.subheader("Review Explorer")
             
             reviews_df = results['reviews_df']
