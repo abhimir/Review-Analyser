@@ -1486,7 +1486,7 @@ def create_app_ui():
             app_store_url = st.text_input("App Store URL", "https://apps.apple.com/us/app/triple-match-city/id6450110217")
             google_play_url = st.text_input("Google Play URL", "https://play.google.com/store/apps/details?id=com.rc.cityCleaner")
             
-            country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], ind500ex=0)
+            country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], index=0)
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
             # Lower default to avoid memory issues
