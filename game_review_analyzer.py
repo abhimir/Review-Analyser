@@ -663,8 +663,9 @@ class EnhancedGameReviewAnalyzer:
         else:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
+            
     def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=20000):
-    all_reviews = []
+        all_reviews = []
     
     # Create a progress indicator 
     progress_text = st.empty()
