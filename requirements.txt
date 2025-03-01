@@ -1,4 +1,4 @@
-streamlit>=1.22.0
+streamlit
 pandas
 numpy
 matplotlib
@@ -9,3 +9,8 @@ scikit-learn
 plotly
 requests
 google-play-scraper
+# Optional AI providers - include any you want to use
+openai
+anthropic
+langchain
+langchain_community
