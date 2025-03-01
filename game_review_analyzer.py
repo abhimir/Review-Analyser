@@ -664,7 +664,7 @@ class EnhancedGameReviewAnalyzer:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
     
-    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=5000):
+    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=25000):
         """
         Fetch reviews for a specific app from the App Store or Google Play Store
         
