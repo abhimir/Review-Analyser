@@ -664,7 +664,7 @@ class EnhancedGameReviewAnalyzer:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
     
-    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
+def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
     """
     Enhanced review fetching method with improved collection strategies
     
@@ -687,17 +687,16 @@ class EnhancedGameReviewAnalyzer:
         List of review dictionaries
     """
     all_reviews = []
-    unique_review_ids = set()
     
-    # Create a progress indicator
+    # Create a progress indicator (not bar) that's compatible with all versions
     progress_text = st.empty()
     progress_text.text(f"Fetching reviews from {store}...")
     
     if store.lower() == 'appstore':
-        # More aggressive App Store review collection with higher page limit
+        # More aggressive App Store review collection
         page = 1
-        # Increase max pages to 1000 (theoretically up to 50,000 reviews)
-        max_pages = min(max_reviews // 50 + 1, 1000)
+        # Increase max pages to 500 (theoretically up to 25,000 reviews)
+        max_pages = min(max_reviews // 50 + 1, 500)
         
         while page <= max_pages and len(all_reviews) < max_reviews:
             # Update progress indicator
@@ -707,7 +706,7 @@ class EnhancedGameReviewAnalyzer:
             url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
             
             try:
-                response = requests.get(url, timeout=15)
+                response = requests.get(url, timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -733,9 +732,8 @@ class EnhancedGameReviewAnalyzer:
                                     'store': 'App Store'
                                 }
                                 
-                                # Avoid duplicates more strictly
-                                if review_data['id'] and review_data['id'] not in unique_review_ids:
-                                    unique_review_ids.add(review_data['id'])
+                                # Avoid duplicates
+                                if not any(r['id'] == review_data['id'] for r in all_reviews):
                                     all_reviews.append(review_data)
                             except (KeyError, ValueError) as e:
                                 print(f"Error processing App Store review: {e}")
@@ -750,18 +748,18 @@ class EnhancedGameReviewAnalyzer:
                     
                     page += 1
                     
-                    # Be nice to the API with more dynamic backoff
-                    time.sleep(min(page * 0.3, 3))  # Reduce and cap delay
+                    # Be nice to the API with exponential backoff
+                    time.sleep(min(page * 0.5, 5))  # Increase delay between requests
                 else:
                     print(f"Error fetching App Store reviews: {response.status_code}")
                     # Implement backoff on error
-                    time.sleep(min(page * 0.5, 5))
+                    time.sleep(min(page * 1, 10))
             except requests.RequestException as e:
                 print(f"Request error: {e}")
-                # More forgiving error handling
-                if page > 20:  # Allow more pages before giving up
+                # Break if repeated failures
+                if page > 10:
                     break
-                time.sleep(min(page * 1, 10))
+                time.sleep(min(page * 2, 20))
     
     elif store.lower() == 'googleplay' and GOOGLE_PLAY_SCRAPER_AVAILABLE:
         try:
@@ -770,7 +768,7 @@ class EnhancedGameReviewAnalyzer:
             batch_count = 0
             
             while len(all_reviews) < max_reviews:
-                # Increase batch size to maximum possible
+                # Google Play Scraper fetches in batches
                 batch_size = min(500, max_reviews - len(all_reviews))
                 if batch_size <= 0:
                     break
@@ -791,7 +789,7 @@ class EnhancedGameReviewAnalyzer:
                     break
                     
                 # Process and add reviews to our list
-                batch_unique_ids = set()
+                unique_review_ids = set()
                 for review in result:
                     try:
                         review_data = {
@@ -805,17 +803,16 @@ class EnhancedGameReviewAnalyzer:
                             'store': 'Google Play'
                         }
                         
-                        # Avoid duplicates more strictly
+                        # Avoid duplicates
                         if review_data['id'] and review_data['id'] not in unique_review_ids:
                             unique_review_ids.add(review_data['id'])
-                            batch_unique_ids.add(review_data['id'])
                             all_reviews.append(review_data)
                     except Exception as e:
                         print(f"Error processing Google Play review: {e}")
                         continue
                 
-                # If no new unique reviews in this batch, or no continuation token, we're done
-                if not batch_unique_ids or not continuation_token:
+                # If there's no continuation token, we've reached the end
+                if not continuation_token:
                     break
                     
                 # Be nice to the API
