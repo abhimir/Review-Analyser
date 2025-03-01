@@ -275,8 +275,9 @@ class AnthropicProvider(LLMProvider):
         """
         
         try:
+            # Use Claude 3.7 Sonnet specifically
             response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-7-sonnet-20250219",  # Using Claude 3.7 Sonnet with correct model ID
                 max_tokens=1000,
                 temperature=0.3,
                 system="You are an expert game analyst with experience in understanding player feedback.",
@@ -286,41 +287,34 @@ class AnthropicProvider(LLMProvider):
             )
             return response.content[0].text
         except Exception as e:
-            return f"Error with Anthropic/Claude analysis: {str(e)}"
-    
-    def _prepare_review_sample(self, reviews, max_reviews=100, max_length=8000):
-        """Prepare a representative sample of reviews as context"""
-        # Get a mix of positive, negative, and neutral reviews
-        sample_reviews = []
-        
-        # Get positive reviews (highest rated)
-        positive_reviews = reviews[reviews['rating'] >= 4].sample(min(max_reviews//3, len(reviews[reviews['rating'] >= 4])))
-        
-        # Get negative reviews (lowest rated)
-        negative_reviews = reviews[reviews['rating'] <= 2].sample(min(max_reviews//3, len(reviews[reviews['rating'] <= 2])))
-        
-        # Get neutral reviews
-        neutral_reviews = reviews[reviews['rating'] == 3].sample(min(max_reviews//3, len(reviews[reviews['rating'] == 3])))
-        
-        # Combine samples
-        sample = pd.concat([positive_reviews, negative_reviews, neutral_reviews])
-        
-        # Format reviews
-        formatted_reviews = []
-        for i, row in sample.iterrows():
-            rating = f"{row['rating']}⭐"
-            source = row['store']
-            content = row['content']
-            formatted = f"[{rating} - {source}]: {content}"
-            formatted_reviews.append(formatted)
-        
-        text = "\n\n".join(formatted_reviews)
-        
-        # Truncate if too long
-        if len(text) > max_length:
-            text = text[:max_length] + "... [truncated]"
-            
-        return text
+            # If there's a model error, provide detailed troubleshooting steps
+            if "model" in str(e).lower() or "not_found_error" in str(e).lower():
+                detailed_error = f"Error with Claude 3.7 Sonnet: {str(e)}\n\n"
+                detailed_error += "Possible solutions:\n"
+                detailed_error += "1. Check that your API key has access to Claude 3.7 Sonnet\n"
+                detailed_error += "2. Verify that your account has the appropriate subscription level\n"
+                detailed_error += "3. Try a different model as fallback:\n\n"
+                
+                # Try a fallback model
+                try:
+                    fallback_model = "claude-3-opus-20240229"  # Use Claude 3 Opus as fallback
+                    response = self.client.messages.create(
+                        model=fallback_model,
+                        max_tokens=1000,
+                        temperature=0.3,
+                        system="You are an expert game analyst with experience in understanding player feedback.",
+                        messages=[
+                            {"role": "user", "content": prompt}
+                        ]
+                    )
+                    detailed_error += f"Successfully used fallback model: {fallback_model}\n\n"
+                    return response.content[0].text
+                except Exception as fallback_error:
+                    detailed_error += f"Fallback also failed: {str(fallback_error)}\n"
+                    
+                return detailed_error
+            else:
+                return f"Error with Anthropic/Claude analysis: {str(e)}"
 
 # Local LLM provider via Hugging Face
 class HuggingFaceProvider(LLMProvider):
