@@ -236,7 +236,101 @@ class OpenAIProvider(LLMProvider):
         return text
 
 # Anthropic/Claude provider
-
+class AnthropicProvider(LLMProvider):
+    """Anthropic/Claude API provider"""
+    def __init__(self, api_key=None):  # Ensure double underscores
+        super().__init__()
+        self.name = "Anthropic/Claude"
+        self.available = ANTHROPIC_AVAILABLE
+        self.api_key = api_key
+        self.client = None
+        
+        if self.available and api_key:
+            try:
+                self.client = anthropic.Anthropic(api_key=api_key)
+                self.available = True
+            except Exception as e:
+                print(f"Error initializing Anthropic client: {e}")
+                self.available = False
+    
+    def _prepare_review_sample(self, reviews, max_reviews=100, max_length=8000):
+        """Prepare a representative sample of reviews as context"""
+        # Get a mix of positive, negative, and neutral reviews
+        sample_reviews = []
+        
+        # Get positive reviews (highest rated)
+        positive_reviews = reviews[reviews['rating'] >= 4].sample(min(max_reviews//3, len(reviews[reviews['rating'] >= 4])))
+        
+        # Get negative reviews (lowest rated)
+        negative_reviews = reviews[reviews['rating'] <= 2].sample(min(max_reviews//3, len(reviews[reviews['rating'] <= 2])))
+        
+        # Get neutral reviews
+        neutral_reviews = reviews[reviews['rating'] == 3].sample(min(max_reviews//3, len(reviews[reviews['rating'] == 3])))
+        
+        # Combine samples
+        sample = pd.concat([positive_reviews, negative_reviews, neutral_reviews])
+        
+        # Format reviews
+        formatted_reviews = []
+        for i, row in sample.iterrows():
+            rating = f"{row['rating']}⭐"
+            source = row['store']
+            content = row['content']
+            formatted = f"[{rating} - {source}]: {content}"
+            formatted_reviews.append(formatted)
+        
+        text = "\n\n".join(formatted_reviews)
+        
+        # Truncate if too long
+        if len(text) > max_length:
+            text = text[:max_length] + "... [truncated]"
+            
+        return text
+                
+    def analyze(self, reviews, query):
+        """Analyze reviews using Anthropic/Claude"""
+        if not self.available or not self.client:
+            return "Anthropic/Claude API not available or not configured properly."
+            
+        # Prepare the reviews as context
+        review_text = self._prepare_review_sample(reviews)
+        
+        # Create the prompt
+        prompt = f"""
+        You are an expert game analyst helping a game developer understand player feedback.
+        Analyze the following game reviews to answer: {query}
+        
+        REVIEWS:
+        {review_text}
+        
+        Provide a detailed, insightful analysis that would help a game developer understand 
+        player preferences and pain points. Focus on specific aspects of the game, not general comments.
+        Organize your analysis with clear sections and concrete examples from the reviews.
+        """
+        
+        try:
+            # Use Claude 3.7 Sonnet specifically
+            response = self.client.messages.create(
+                model="claude-3-opus-20240229",  # Updated to a current model
+                max_tokens=1000,
+                temperature=0.3,
+                system="You are an expert game analyst with experience in understanding player feedback.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.content[0].text
+        except Exception as e:
+            # If there's a model error, provide detailed troubleshooting steps
+            if "model" in str(e).lower() or "not_found_error" in str(e).lower():
+                detailed_error = f"Error with Claude model: {str(e)}\n\n"
+                detailed_error += "Possible solutions:\n"
+                detailed_error += "1. Check that your API key has access to the Claude model\n"
+                detailed_error += "2. Verify that your account has the appropriate subscription level\n"
+                
+                return detailed_error
+            else:
+                return f"Error with Anthropic/Claude analysis: {str(e)}"
 
 # Local LLM provider via Hugging Face
 class HuggingFaceProvider(LLMProvider):
