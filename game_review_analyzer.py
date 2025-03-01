@@ -664,7 +664,7 @@ class EnhancedGameReviewAnalyzer:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
     
-    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=25000):
+    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=5000):
         """
         Fetch reviews for a specific app from the App Store or Google Play Store
         
@@ -679,7 +679,7 @@ class EnhancedGameReviewAnalyzer:
         language : str
             Language code (default: 'en')
         max_reviews : int
-            Maximum number of reviews to fetch (default: 25000)
+            Maximum number of reviews to fetch (default: 5000)
             
         Returns:
         --------
@@ -1490,7 +1490,7 @@ def create_app_ui():
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
             # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 25000, 1000, step=100)
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
@@ -1537,7 +1537,7 @@ def create_app_ui():
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
             # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 25000, 1000, step=100)
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
