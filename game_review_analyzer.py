@@ -1587,9 +1587,6 @@ def create_app_ui():
                 st.error(f"Error filtering reviews: {e}")
 
 if __name__ == "__main__":
-    # Set global streamlit options
-    st.set_option('deprecation.showPyplotGlobalUse', False)
-    
     # Check if required packages are installed
     if not NLTK_AVAILABLE:
         print("Warning: NLTK components not available. Using basic text processing.")
