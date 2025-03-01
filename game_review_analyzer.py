@@ -663,115 +663,148 @@ class EnhancedGameReviewAnalyzer:
         else:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
-            
-    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=20000):
-        all_reviews = []
     
-    # Create a progress indicator 
-    progress_text = st.empty()
-    progress_text.text(f"Fetching reviews from {store}...")
-    
-    if store.lower() == 'appstore':
-        page = 1
-        # Increase max pages to allow more reviews
-        max_pages = min(max_reviews // 50 + 1, 500)  # Increased from 100 to 500
+    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=5000):
+        """
+        Fetch reviews for a specific app from the App Store or Google Play Store
         
-        while page <= max_pages and len(all_reviews) < max_reviews:
-            progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far)")
+        Parameters:
+        -----------
+        app_id : str
+            ID of the app to fetch reviews for
+        store : str
+            Store to fetch reviews from ('appstore' or 'googleplay')
+        country : str
+            Country code for the store (default: 'us')
+        language : str
+            Language code (default: 'en')
+        max_reviews : int
+            Maximum number of reviews to fetch (default: 5000)
             
-            url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
-            response = requests.get(url)
+        Returns:
+        --------
+        list
+            List of review dictionaries
+        """
+        all_reviews = []
+        
+        # Create a progress indicator (not bar) that's compatible with all versions
+        progress_text = st.empty()
+        progress_text.text(f"Fetching reviews from {store}...")
+        
+        if store.lower() == 'appstore':
+            page = 1
+            max_pages = min(max_reviews // 50 + 1, 100)  # App Store limits to 100 pages max, ~50 reviews per page
             
-            if response.status_code == 200:
-                data = response.json()
-                entries = data.get('feed', {}).get('entry', [])
+            while page <= max_pages and len(all_reviews) < max_reviews:
+                # Update progress indicator
+                progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far)")
                 
-                if len(entries) > 1:
-                    reviews = entries[1:]  # Skip the first entry
+                # App Store RSS feed URL for reviews
+                url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
+                response = requests.get(url)
+                
+                if response.status_code == 200:
+                    data = response.json()
                     
-                    for review in reviews:
+                    # Check if we have entries in the response
+                    entries = data.get('feed', {}).get('entry', [])
+                    
+                    # The first entry is metadata, not a review
+                    if len(entries) > 1:
+                        reviews = entries[1:]  # Skip the first entry
+                        
+                        # Process and add reviews to our list
+                        for review in reviews:
+                            try:
+                                review_data = {
+                                    'id': review.get('id', {}).get('label', ''),
+                                    'title': review.get('title', {}).get('label', ''),
+                                    'content': review.get('content', {}).get('label', ''),
+                                    'rating': int(review.get('im:rating', {}).get('label', 0)),
+                                    'version': review.get('im:version', {}).get('label', ''),
+                                    'author': review.get('author', {}).get('name', {}).get('label', ''),
+                                    'date': review.get('updated', {}).get('label', ''),
+                                    'store': 'App Store'
+                                }
+                                all_reviews.append(review_data)
+                            except (KeyError, ValueError) as e:
+                                print(f"Error processing App Store review: {e}")
+                                continue
+                    else:
+                        # No more reviews to fetch
+                        break
+                        
+                    page += 1
+                    time.sleep(0.5)  # Be nice to the API
+                else:
+                    print(f"Error fetching App Store reviews: {response.status_code}")
+                    break
+        
+        elif store.lower() == 'googleplay' and GOOGLE_PLAY_SCRAPER_AVAILABLE:
+            try:
+                # Fetch reviews in batches
+                # Each continuation token gets us the next batch
+                continuation_token = None
+                batch_count = 0
+                
+                while len(all_reviews) < max_reviews:
+                    # Google Play Scraper fetches in batches
+                    batch_size = min(200, max_reviews - len(all_reviews))
+                    if batch_size <= 0:
+                        break
+                    
+                    batch_count += 1
+                    progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far)")
+                        
+                    result, continuation_token = gplay_reviews(
+                        app_id,
+                        lang=language,
+                        country=country,
+                        sort=Sort.NEWEST,
+                        count=batch_size,
+                        continuation_token=continuation_token
+                    )
+                    
+                    if not result:
+                        break
+                        
+                    # Process and add reviews to our list
+                    for review in result:
                         try:
                             review_data = {
-                                'id': review.get('id', {}).get('label', ''),
-                                'title': review.get('title', {}).get('label', ''),
-                                'content': review.get('content', {}).get('label', ''),
-                                'rating': int(review.get('im:rating', {}).get('label', 0)),
-                                'version': review.get('im:version', {}).get('label', ''),
-                                'author': review.get('author', {}).get('name', {}).get('label', ''),
-                                'date': review.get('updated', {}).get('label', ''),
-                                'store': 'App Store'
+                                'id': review.get('reviewId', ''),
+                                'title': '',  # Google Play reviews don't have titles
+                                'content': review.get('content', ''),
+                                'rating': review.get('score', 0),
+                                'version': '',  # Version info not consistently available
+                                'author': review.get('userName', ''),
+                                'date': review.get('at', ''),
+                                'store': 'Google Play'
                             }
                             all_reviews.append(review_data)
-                        except (KeyError, ValueError) as e:
-                            print(f"Error processing App Store review: {e}")
+                        except Exception as e:
+                            print(f"Error processing Google Play review: {e}")
                             continue
-                else:
-                    break
                     
-                page += 1
-                time.sleep(0.5)  # Be nice to the API
-            else:
-                print(f"Error fetching App Store reviews: {response.status_code}")
-                break
-    
-    elif store.lower() == 'googleplay' and GOOGLE_PLAY_SCRAPER_AVAILABLE:
-        try:
-            continuation_token = None
-            batch_count = 0
+                    # If there's no continuation token, we've reached the end
+                    if not continuation_token:
+                        break
+                        
+                    time.sleep(0.5)  # Be nice to the API
+                    
+            except Exception as e:
+                print(f"Error fetching Google Play reviews: {e}")
+        
+        else:
+            print(f"Invalid store type or Google Play Scraper not available")
+        
+        progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store}")
+        time.sleep(1)  # Let user see final status
+        progress_text.empty()  # Clear the status message
             
-            while len(all_reviews) < max_reviews:
-                # Increase batch size
-                batch_size = min(500, max_reviews - len(all_reviews))
-                if batch_size <= 0:
-                    break
-                
-                batch_count += 1
-                progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far)")
-                    
-                result, continuation_token = gplay_reviews(
-                    app_id,
-                    lang=language,
-                    country=country,
-                    sort=Sort.NEWEST,
-                    count=batch_size,
-                    continuation_token=continuation_token
-                )
-                
-                if not result:
-                    break
-                    
-                for review in result:
-                    try:
-                        review_data = {
-                            'id': review.get('reviewId', ''),
-                            'title': '',
-                            'content': review.get('content', ''),
-                            'rating': review.get('score', 0),
-                            'version': '',
-                            'author': review.get('userName', ''),
-                            'date': review.get('at', ''),
-                            'store': 'Google Play'
-                        }
-                        all_reviews.append(review_data)
-                    except Exception as e:
-                        print(f"Error processing Google Play review: {e}")
-                        continue
-                
-                if not continuation_token:
-                    break
-                    
-                time.sleep(0.5)  # Be nice to the API
-                
-        except Exception as e:
-            print(f"Error fetching Google Play reviews: {e}")
-    
-    progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store}")
-    time.sleep(1)
-    progress_text.empty()
-    
-    print(f"Fetched {len(all_reviews)} reviews from {store}")
-    return all_reviews
-   
+        print(f"Fetched {len(all_reviews)} reviews from {store}")
+        return all_reviews
     
     def create_dataframe(self, reviews):
         """
