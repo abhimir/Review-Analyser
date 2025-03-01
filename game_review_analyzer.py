@@ -276,7 +276,7 @@ class AnthropicProvider(LLMProvider):
         
         try:
             response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-7-sonnet-20250219",
                 max_tokens=1000,
                 temperature=0.3,
                 system="You are an expert game analyst with experience in understanding player feedback.",
