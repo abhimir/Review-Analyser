@@ -238,7 +238,7 @@ class OpenAIProvider(LLMProvider):
 # Anthropic/Claude provider
 class AnthropicProvider(LLMProvider):
     """Anthropic/Claude API provider"""
-    def __init__(self, api_key=None):  # Ensure double underscores
+    def __init__(self, api_key=None):
         super().__init__()
         self.name = "Anthropic/Claude"
         self.available = ANTHROPIC_AVAILABLE
@@ -252,6 +252,41 @@ class AnthropicProvider(LLMProvider):
             except Exception as e:
                 print(f"Error initializing Anthropic client: {e}")
                 self.available = False
+                
+    def analyze(self, reviews, query):
+        """Analyze reviews using Anthropic/Claude"""
+        if not self.available or not self.client:
+            return "Anthropic/Claude API not available or not configured properly."
+            
+        # Prepare the reviews as context
+        review_text = self._prepare_review_sample(reviews)
+        
+        # Create the prompt
+        prompt = f"""
+        You are an expert game analyst helping a game developer understand player feedback.
+        Analyze the following game reviews to answer: {query}
+        
+        REVIEWS:
+        {review_text}
+        
+        Provide a detailed, insightful analysis that would help a game developer understand 
+        player preferences and pain points. Focus on specific aspects of the game, not general comments.
+        Organize your analysis with clear sections and concrete examples from the reviews.
+        """
+        
+        try:
+            response = self.client.messages.create(
+                model="claude-3-sonnet-20240229",
+                max_tokens=1000,
+                temperature=0.3,
+                system="You are an expert game analyst with experience in understanding player feedback.",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.content[0].text
+        except Exception as e:
+            return f"Error with Anthropic/Claude analysis: {str(e)}"
     
     def _prepare_review_sample(self, reviews, max_reviews=100, max_length=8000):
         """Prepare a representative sample of reviews as context"""
@@ -286,133 +321,10 @@ class AnthropicProvider(LLMProvider):
             text = text[:max_length] + "... [truncated]"
             
         return text
-                
-    def analyze(self, reviews, query):
-        """Analyze reviews using Anthropic/Claude"""
-        if not self.available or not self.client:
-            return "Anthropic/Claude API not available or not configured properly."
-            
-        # Prepare the reviews as context
-        review_text = self._prepare_review_sample(reviews)
-        
-        # Create the prompt
-        prompt = f"""
-        You are an expert game analyst helping a game developer understand player feedback.
-        Analyze the following game reviews to answer: {query}
-        
-        REVIEWS:
-        {review_text}
-        
-        Provide a detailed, insightful analysis that would help a game developer understand 
-        player preferences and pain points. Focus on specific aspects of the game, not general comments.
-        Organize your analysis with clear sections and concrete examples from the reviews.
-        """
-        
-        try:
-            # Use Claude 3.7 Sonnet specifically
-            response = self.client.messages.create(
-                model="claude-3-opus-20240229",  # Updated to a current model
-                max_tokens=1000,
-                temperature=0.3,
-                system="You are an expert game analyst with experience in understanding player feedback.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return response.content[0].text
-        except Exception as e:
-            # If there's a model error, provide detailed troubleshooting steps
-            if "model" in str(e).lower() or "not_found_error" in str(e).lower():
-                detailed_error = f"Error with Claude model: {str(e)}\n\n"
-                detailed_error += "Possible solutions:\n"
-                detailed_error += "1. Check that your API key has access to the Claude model\n"
-                detailed_error += "2. Verify that your account has the appropriate subscription level\n"
-                
-                return detailed_error
-            else:
-                return f"Error with Anthropic/Claude analysis: {str(e)}"
 
 # Local LLM provider via Hugging Face
 class HuggingFaceProvider(LLMProvider):
-    """Hugging Face local LLM provider"""class AnthropicProvider(LLMProvider):
-    """Anthropic/Claude API provider"""
-    def __init__(self, api_key=None):  # Changed from **init** to __init__
-        super().__init__()
-        self.name = "Anthropic/Claude"
-        self.available = ANTHROPIC_AVAILABLE
-        self.api_key = api_key
-        self.client = None
-        
-        if self.available and api_key:
-            try:
-                self.client = anthropic.Anthropic(api_key=api_key)
-                self.available = True
-            except Exception as e:
-                print(f"Error initializing Anthropic client: {e}")
-                self.available = False
-                
-    def analyze(self, reviews, query):
-        """Analyze reviews using Anthropic/Claude"""
-        if not self.available or not self.client:
-            return "Anthropic/Claude API not available or not configured properly."
-            
-        # Prepare the reviews as context
-        review_text = self._prepare_review_sample(reviews)
-        
-        # Create the prompt
-        prompt = f"""
-        You are an expert game analyst helping a game developer understand player feedback.
-        Analyze the following game reviews to answer: {query}
-        
-        REVIEWS:
-        {review_text}
-        
-        Provide a detailed, insightful analysis that would help a game developer understand 
-        player preferences and pain points. Focus on specific aspects of the game, not general comments.
-        Organize your analysis with clear sections and concrete examples from the reviews.
-        """
-        
-        try:
-            # Use Claude 3.7 Sonnet specifically
-            response = self.client.messages.create(
-                model="claude-3-7-sonnet-20250219",  # Using Claude 3.7 Sonnet with correct model ID
-                max_tokens=1000,
-                temperature=0.3,
-                system="You are an expert game analyst with experience in understanding player feedback.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            return response.content[0].text
-        except Exception as e:
-            # If there's a model error, provide detailed troubleshooting steps
-            if "model" in str(e).lower() or "not_found_error" in str(e).lower():
-                detailed_error = f"Error with Claude 3.7 Sonnet: {str(e)}\n\n"
-                detailed_error += "Possible solutions:\n"
-                detailed_error += "1. Check that your API key has access to Claude 3.7 Sonnet\n"
-                detailed_error += "2. Verify that your account has the appropriate subscription level\n"
-                detailed_error += "3. Try a different model as fallback:\n\n"
-                
-                # Try a fallback model
-                try:
-                    fallback_model = "claude-3-opus-20240229"  # Use Claude 3 Opus as fallback
-                    response = self.client.messages.create(
-                        model=fallback_model,
-                        max_tokens=1000,
-                        temperature=0.3,
-                        system="You are an expert game analyst with experience in understanding player feedback.",
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
-                    detailed_error += f"Successfully used fallback model: {fallback_model}\n\n"
-                    return response.content[0].text
-                except Exception as fallback_error:
-                    detailed_error += f"Fallback also failed: {str(fallback_error)}\n"
-                    
-                return detailed_error
-            else:
-                return f"Error with Anthropic/Claude analysis: {str(e)}"
+    """Hugging Face local LLM provider"""
     def __init__(self, api_key=None):
         super().__init__()
         self.name = "Hugging Face"
