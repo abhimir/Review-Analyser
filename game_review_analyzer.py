@@ -665,171 +665,174 @@ class EnhancedGameReviewAnalyzer:
             return None
     
     def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
-        """
-        Enhanced review fetching method with improved collection strategies
+    """
+    Enhanced review fetching method with improved collection strategies
+    
+    Parameters:
+    -----------
+    app_id : str
+        ID of the app to fetch reviews for
+    store : str
+        Store to fetch reviews from ('appstore' or 'googleplay')
+    country : str
+        Country code for the store (default: 'us')
+    language : str
+        Language code (default: 'en')
+    max_reviews : int
+        Maximum number of reviews to fetch (default: 10000)
         
-        Parameters:
-        -----------
-        app_id : str
-            ID of the app to fetch reviews for
-        store : str
-            Store to fetch reviews from ('appstore' or 'googleplay')
-        country : str
-            Country code for the store (default: 'us')
-        language : str
-            Language code (default: 'en')
-        max_reviews : int
-            Maximum number of reviews to fetch (default: 10000)
+    Returns:
+    --------
+    list
+        List of review dictionaries
+    """
+    all_reviews = []
+    unique_review_ids = set()
+    
+    # Create a progress indicator
+    progress_text = st.empty()
+    progress_text.text(f"Fetching reviews from {store}...")
+    
+    if store.lower() == 'appstore':
+        # More aggressive App Store review collection with higher page limit
+        page = 1
+        # Increase max pages to 1000 (theoretically up to 50,000 reviews)
+        max_pages = min(max_reviews // 50 + 1, 1000)
+        
+        while page <= max_pages and len(all_reviews) < max_reviews:
+            # Update progress indicator
+            progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far)")
             
-        Returns:
-        --------
-        list
-            List of review dictionaries
-        """
-        all_reviews = []
-        
-        # Create a progress indicator (not bar) that's compatible with all versions
-        progress_text = st.empty()
-        progress_text.text(f"Fetching reviews from {store}...")
-        
-        if store.lower() == 'appstore':
-            # More aggressive App Store review collection
-            page = 1
-            # Increase max pages to 500 (theoretically up to 25,000 reviews)
-            max_pages = min(max_reviews // 50 + 1, 500)
+            # App Store RSS feed URL for reviews
+            url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
             
-            while page <= max_pages and len(all_reviews) < max_reviews:
-                # Update progress indicator
-                progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far)")
-                
-                # App Store RSS feed URL for reviews
-                url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
-                
-                try:
-                    response = requests.get(url, timeout=10)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        
-                        # Check if we have entries in the response
-                        entries = data.get('feed', {}).get('entry', [])
-                        
-                        # The first entry is metadata, not a review
-                        if len(entries) > 1:
-                            reviews = entries[1:]  # Skip the first entry
-                            
-                            # Process and add reviews to our list
-                            for review in reviews:
-                                try:
-                                    review_data = {
-                                        'id': review.get('id', {}).get('label', ''),
-                                        'title': review.get('title', {}).get('label', ''),
-                                        'content': review.get('content', {}).get('label', ''),
-                                        'rating': int(review.get('im:rating', {}).get('label', 0)),
-                                        'version': review.get('im:version', {}).get('label', ''),
-                                        'author': review.get('author', {}).get('name', {}).get('label', ''),
-                                        'date': review.get('updated', {}).get('label', ''),
-                                        'store': 'App Store'
-                                    }
-                                    
-                                    # Avoid duplicates
-                                    if not any(r['id'] == review_data['id'] for r in all_reviews):
-                                        all_reviews.append(review_data)
-                                except (KeyError, ValueError) as e:
-                                    print(f"Error processing App Store review: {e}")
-                                    continue
-                            
-                            # Break if no new reviews
-                            if len(reviews) == 0:
-                                break
-                        else:
-                            # No more reviews to fetch
-                            break
-                        
-                        page += 1
-                        
-                        # Be nice to the API with exponential backoff
-                        time.sleep(min(page * 0.5, 5))  # Increase delay between requests
-                    else:
-                        print(f"Error fetching App Store reviews: {response.status_code}")
-                        # Implement backoff on error
-                        time.sleep(min(page * 1, 10))
-                except requests.RequestException as e:
-                    print(f"Request error: {e}")
-                    # Break if repeated failures
-                    if page > 10:
-                        break
-                    time.sleep(min(page * 2, 20))
-        
-        elif store.lower() == 'googleplay' and GOOGLE_PLAY_SCRAPER_AVAILABLE:
             try:
-                # More aggressive Google Play review collection
-                continuation_token = None
-                batch_count = 0
+                response = requests.get(url, timeout=15)
                 
-                while len(all_reviews) < max_reviews:
-                    # Google Play Scraper fetches in batches
-                    batch_size = min(500, max_reviews - len(all_reviews))
-                    if batch_size <= 0:
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Check if we have entries in the response
+                    entries = data.get('feed', {}).get('entry', [])
+                    
+                    # The first entry is metadata, not a review
+                    if len(entries) > 1:
+                        reviews = entries[1:]  # Skip the first entry
+                        
+                        # Process and add reviews to our list
+                        for review in reviews:
+                            try:
+                                review_data = {
+                                    'id': review.get('id', {}).get('label', ''),
+                                    'title': review.get('title', {}).get('label', ''),
+                                    'content': review.get('content', {}).get('label', ''),
+                                    'rating': int(review.get('im:rating', {}).get('label', 0)),
+                                    'version': review.get('im:version', {}).get('label', ''),
+                                    'author': review.get('author', {}).get('name', {}).get('label', ''),
+                                    'date': review.get('updated', {}).get('label', ''),
+                                    'store': 'App Store'
+                                }
+                                
+                                # Avoid duplicates more strictly
+                                if review_data['id'] and review_data['id'] not in unique_review_ids:
+                                    unique_review_ids.add(review_data['id'])
+                                    all_reviews.append(review_data)
+                            except (KeyError, ValueError) as e:
+                                print(f"Error processing App Store review: {e}")
+                                continue
+                        
+                        # Break if no new reviews
+                        if len(reviews) == 0:
+                            break
+                    else:
+                        # No more reviews to fetch
                         break
                     
-                    batch_count += 1
-                    progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far)")
-                        
-                    result, continuation_token = gplay_reviews(
-                        app_id,
-                        lang=language,
-                        country=country,
-                        sort=Sort.NEWEST,
-                        count=batch_size,
-                        continuation_token=continuation_token
-                    )
+                    page += 1
                     
-                    if not result:
-                        break
-                        
-                    # Process and add reviews to our list
-                    unique_review_ids = set()
-                    for review in result:
-                        try:
-                            review_data = {
-                                'id': review.get('reviewId', ''),
-                                'title': '',  # Google Play reviews don't have titles
-                                'content': review.get('content', ''),
-                                'rating': review.get('score', 0),
-                                'version': '',  # Version info not consistently available
-                                'author': review.get('userName', ''),
-                                'date': review.get('at', ''),
-                                'store': 'Google Play'
-                            }
-                            
-                            # Avoid duplicates
-                            if review_data['id'] and review_data['id'] not in unique_review_ids:
-                                unique_review_ids.add(review_data['id'])
-                                all_reviews.append(review_data)
-                        except Exception as e:
-                            print(f"Error processing Google Play review: {e}")
-                            continue
-                    
-                    # If there's no continuation token, we've reached the end
-                    if not continuation_token:
-                        break
-                        
-                    # Be nice to the API
-                    time.sleep(1)
-                        
-            except Exception as e:
-                print(f"Error fetching Google Play reviews: {e}")
-        
-        else:
-            print(f"Invalid store type or Google Play Scraper not available")
-        
-        progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store}")
-        time.sleep(1)  # Let user see final status
-        progress_text.empty()  # Clear the status message
+                    # Be nice to the API with more dynamic backoff
+                    time.sleep(min(page * 0.3, 3))  # Reduce and cap delay
+                else:
+                    print(f"Error fetching App Store reviews: {response.status_code}")
+                    # Implement backoff on error
+                    time.sleep(min(page * 0.5, 5))
+            except requests.RequestException as e:
+                print(f"Request error: {e}")
+                # More forgiving error handling
+                if page > 20:  # Allow more pages before giving up
+                    break
+                time.sleep(min(page * 1, 10))
+    
+    elif store.lower() == 'googleplay' and GOOGLE_PLAY_SCRAPER_AVAILABLE:
+        try:
+            # More aggressive Google Play review collection
+            continuation_token = None
+            batch_count = 0
             
-        print(f"Fetched {len(all_reviews)} reviews from {store}")
-        return all_reviews
+            while len(all_reviews) < max_reviews:
+                # Increase batch size to maximum possible
+                batch_size = min(500, max_reviews - len(all_reviews))
+                if batch_size <= 0:
+                    break
+                
+                batch_count += 1
+                progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far)")
+                    
+                result, continuation_token = gplay_reviews(
+                    app_id,
+                    lang=language,
+                    country=country,
+                    sort=Sort.NEWEST,
+                    count=batch_size,
+                    continuation_token=continuation_token
+                )
+                
+                if not result:
+                    break
+                    
+                # Process and add reviews to our list
+                batch_unique_ids = set()
+                for review in result:
+                    try:
+                        review_data = {
+                            'id': review.get('reviewId', ''),
+                            'title': '',  # Google Play reviews don't have titles
+                            'content': review.get('content', ''),
+                            'rating': review.get('score', 0),
+                            'version': '',  # Version info not consistently available
+                            'author': review.get('userName', ''),
+                            'date': review.get('at', ''),
+                            'store': 'Google Play'
+                        }
+                        
+                        # Avoid duplicates more strictly
+                        if review_data['id'] and review_data['id'] not in unique_review_ids:
+                            unique_review_ids.add(review_data['id'])
+                            batch_unique_ids.add(review_data['id'])
+                            all_reviews.append(review_data)
+                    except Exception as e:
+                        print(f"Error processing Google Play review: {e}")
+                        continue
+                
+                # If no new unique reviews in this batch, or no continuation token, we're done
+                if not batch_unique_ids or not continuation_token:
+                    break
+                    
+                # Be nice to the API
+                time.sleep(1)
+                    
+        except Exception as e:
+            print(f"Error fetching Google Play reviews: {e}")
+    
+    else:
+        print(f"Invalid store type or Google Play Scraper not available")
+    
+    progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store}")
+    time.sleep(1)  # Let user see final status
+    progress_text.empty()  # Clear the status message
+        
+    print(f"Fetched {len(all_reviews)} reviews from {store}")
+    return all_reviews
     
     def create_dataframe(self, reviews):
         """
