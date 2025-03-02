@@ -711,7 +711,14 @@ class EnhancedGameReviewAnalyzer:
                 # Periodically run garbage collection to free memory
                 if len(all_reviews) % 1000 == 0 and len(all_reviews) > 0:
                     gc.collect()
-                
+
+                if page % 10 == 0:  # Every 10 pages, switch sort order to get more reviews
+                    sort_orders = ['mostRecent', 'mostHelpful', 'mostFavorable', 'leastFavorable']
+                    sort_idx = (page // 10) % len(sort_orders)
+                    sort_order = sort_orders[sort_idx]
+                else:
+                    sort_order = 'mostRecent'
+
                 # App Store RSS feed URL for reviews
                 url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
                 
@@ -785,7 +792,13 @@ class EnhancedGameReviewAnalyzer:
                         gc.collect()
                         
                     # Google Play Scraper fetches in batches
-                    batch_size = min(500, max_reviews - len(all_reviews))
+                    if batch_count > 1:
+                        # Increase batch size for subsequent requests
+                        adaptive_batch = min(500 * (batch_count // 2 + 1), 1500)  # Increase up to 1500
+                        batch_size = min(adaptive_batch, max_reviews - len(all_reviews))
+                    else:
+                        batch_size = min(500, max_reviews - len(all_reviews))
+                    
                     if batch_size <= 0:
                         break
                     
