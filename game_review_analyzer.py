@@ -2257,7 +2257,7 @@ def create_app_ui():
                 
                 # Display info about filtered results
                 total_filtered = len(filtered_df)
-                st.write(f"Showing {total_filtered} of {len(reviews_df)} reviews") {len(reviews_df)} reviews")
+                st.write(f"Showing {total_filtered} of {len(reviews_df)} reviews")
                 
                 # UPDATED: Implement pagination
                 total_pages = max(1, (total_reviews + page_size - 1) // page_size)
