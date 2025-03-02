@@ -22,6 +22,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 import textwrap
+import gc  # Added for explicit garbage collection
 
 # Basic NLTK setup (keeping this for broad classification and filtering)
 import nltk
@@ -322,7 +323,7 @@ class AnthropicProvider(LLMProvider):
             
         return text
 
-# Local LLM provider via Hugging Face
+# Hugging Face provider
 class HuggingFaceProvider(LLMProvider):
     """Hugging Face local LLM provider"""
     def __init__(self, api_key=None):
@@ -692,15 +693,24 @@ class EnhancedGameReviewAnalyzer:
         progress_text = st.empty()
         progress_text.text(f"Fetching reviews from {store}...")
         
+        # Initialize timing for progress metrics
+        start_time = time.time()
+        
         if store.lower() == 'appstore':
             # More aggressive App Store review collection
             page = 1
-            # Increase max pages to 500 (theoretically up to 25,000 reviews)
-            max_pages = min(max_reviews // 50 + 1, 500)
+            # UPDATED: Remove the hard cap of 500 pages
+            max_pages = max_reviews // 50 + 1
             
             while page <= max_pages and len(all_reviews) < max_reviews:
-                # Update progress indicator
-                progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far)")
+                # Update progress indicator with improved metrics
+                elapsed = time.time() - start_time
+                rate = len(all_reviews) / elapsed if elapsed > 0 else 0
+                progress_text.text(f"Fetching page {page}/{max_pages} from App Store... ({len(all_reviews)} reviews so far, {rate:.1f} reviews/sec)")
+                
+                # Periodically run garbage collection to free memory
+                if len(all_reviews) % 1000 == 0 and len(all_reviews) > 0:
+                    gc.collect()
                 
                 # App Store RSS feed URL for reviews
                 url = f"https://itunes.apple.com/{country}/rss/customerreviews/page={page}/id={app_id}/sortBy=mostRecent/json"
@@ -768,13 +778,20 @@ class EnhancedGameReviewAnalyzer:
                 batch_count = 0
                 
                 while len(all_reviews) < max_reviews:
+                    # Periodically run garbage collection to free memory
+                    if len(all_reviews) % 1000 == 0 and len(all_reviews) > 0:
+                        gc.collect()
+                        
                     # Google Play Scraper fetches in batches
                     batch_size = min(500, max_reviews - len(all_reviews))
                     if batch_size <= 0:
                         break
                     
                     batch_count += 1
-                    progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far)")
+                    # Improved progress metrics
+                    elapsed = time.time() - start_time
+                    rate = len(all_reviews) / elapsed if elapsed > 0 else 0
+                    progress_text.text(f"Fetching batch {batch_count} from Google Play... ({len(all_reviews)} reviews so far, {rate:.1f} reviews/sec)")
                         
                     result, continuation_token = gplay_reviews(
                         app_id,
@@ -824,7 +841,9 @@ class EnhancedGameReviewAnalyzer:
         else:
             print(f"Invalid store type or Google Play Scraper not available")
         
-        progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store}")
+        total_time = time.time() - start_time
+        avg_rate = len(all_reviews) / total_time if total_time > 0 else 0
+        progress_text.text(f"Completed! Fetched {len(all_reviews)} reviews from {store} in {total_time:.1f} seconds (avg: {avg_rate:.1f} reviews/sec)")
         time.sleep(1)  # Let user see final status
         progress_text.empty()  # Clear the status message
             
@@ -1514,8 +1533,8 @@ def create_app_ui():
             country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], index=0)
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
-            # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
+            # UPDATED: Increase slider maximum to 20000
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 20000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
@@ -1561,8 +1580,8 @@ def create_app_ui():
             country = st.selectbox("Country", ["us", "gb", "ca", "au", "de", "fr", "jp", "kr", "cn", "br", "ru", "in"], index=0)
             language = st.selectbox("Language", ["en", "fr", "de", "es", "it", "ja", "ko", "pt", "ru", "zh"], index=0)
             
-            # Lower default to avoid memory issues
-            max_reviews = st.slider("Maximum Reviews per Store", 100, 5000, 1000, step=100)
+            # UPDATED: Increase slider maximum to 20000
+            max_reviews = st.slider("Maximum Reviews per Store", 100, 20000, 1000, step=100)
             
             analyze_button = st.button("Analyze Reviews")
             
@@ -2219,6 +2238,9 @@ def create_app_ui():
                 
             search_term = st.text_input("Search in Reviews", "")
             
+            # UPDATED: Improved paginated display
+            page_size = st.selectbox("Reviews per page", [10, 20, 50, 100], index=1)
+            
             # Apply filters
             try:
                 filtered_df = reviews_df[
@@ -2234,16 +2256,23 @@ def create_app_ui():
                     filtered_df = filtered_df[content_match | title_match]
                 
                 # Display filters info
-                st.write(f"Showing {len(filtered_df)} of {len(reviews_df)} reviews")
+                total_reviews = len(filtered_df)
+                st.write(f"Showing {total_reviews} of {len(reviews_df)} reviews")
                 
-                # Limit display to avoid overwhelming the UI
-                display_limit = min(len(filtered_df), 500)
-                if len(filtered_df) > display_limit:
-                    st.info(f"Showing first {display_limit} reviews. Use search or filters to narrow results.")
-                    filtered_df = filtered_df.head(display_limit)
+                # UPDATED: Implement pagination
+                total_pages = max(1, (total_reviews + page_size - 1) // page_size)
+                page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
                 
-                # Display reviews
-                for idx, row in filtered_df.iterrows():
+                st.write(f"Page {page_number} of {total_pages}")
+                
+                # Get current page reviews
+                start_idx = (page_number - 1) * page_size
+                end_idx = min(start_idx + page_size, total_reviews)
+                
+                current_page_df = filtered_df.iloc[start_idx:end_idx]
+                
+                # Display reviews with memory-efficient approach
+                for idx, row in current_page_df.iterrows():
                     # Format the title - Google Play reviews may not have titles
                     title = row['title'] if row['title'] else f"Review #{idx}"
                     
@@ -2266,18 +2295,68 @@ def create_app_ui():
                         st.write(f"**Author:** {row['author']}")
                         st.write(f"**Review:** {row['content']}")
                         st.write(f"**Sentiment Score:** {row['compound_score']:.2f}")
-            except Exception as e:
-                st.error(f"Error filtering reviews: {e}")
-
-if __name__ == "__main__":
-    # Check if required packages are installed
-    if not NLTK_AVAILABLE:
-        print("Warning: NLTK components not available. Using basic text processing.")
-    
-    if not GOOGLE_PLAY_SCRAPER_AVAILABLE:
-        print("Warning: Google Play Scraper not available. Google Play analysis will be disabled.")
-    
-    if not WORDCLOUD_AVAILABLE:
-        print("Warning: WordCloud package not available. Word cloud visualization will be disabled.")
-    
-    create_app_ui()
+                
+                # Add pagination controls at the bottom too
+                col1, col2, col3 = st.columns([1, 3, 1])
+                with col1:
+                    if page_number > 1:
+                        if st.button("⬅️ Previous"):
+                            # This will trigger a rerun with the new page number
+                            pass
+                            
+                with col3:
+                    if page_number < total_pages:
+                        if st.button("Next ➡️"):
+                            # This will trigger a rerun with the new page number
+                            pass {len(reviews_df)} reviews")
+                
+                # UPDATED: Implement pagination
+                total_pages = max(1, (total_reviews + page_size - 1) // page_size)
+                page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
+                
+                st.write(f"Page {page_number} of {total_pages}")
+                
+                # Get current page reviews
+                start_idx = (page_number - 1) * page_size
+                end_idx = min(start_idx + page_size, total_reviews)
+                
+                current_page_df = filtered_df.iloc[start_idx:end_idx]
+                
+                # Display reviews with memory-efficient approach
+                for idx, row in current_page_df.iterrows():
+                    # Format the title - Google Play reviews may not have titles
+                    title = row['title'] if row['title'] else f"Review #{idx}"
+                    
+                    # Format date based on type
+                    if isinstance(row['date'], pd.Timestamp):
+                        date_str = row['date'].strftime('%Y-%m-%d')
+                    else:
+                        # Handle string dates from Google Play
+                        try:
+                            date_str = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
+                        except:
+                            date_str = str(row['date'])
+                    
+                    with st.expander(f"{title} ({row['rating']}⭐ - {row['sentiment'].capitalize()} - {row['store']})"):
+                        st.write(f"**Date:** {date_str}")
+                        
+                        if row['version'] and not pd.isna(row['version']):
+                            st.write(f"**Version:** {row['version']}")
+                            
+                        st.write(f"**Author:** {row['author']}")
+                        st.write(f"**Review:** {row['content']}")
+                        st.write(f"**Sentiment Score:** {row['compound_score']:.2f}")
+                
+                # Add pagination controls at the bottom too
+                col1, col2, col3 = st.columns([1, 3, 1])
+                with col1:
+                    if page_number > 1:
+                        if st.button("⬅️ Previous"):
+                            # This will trigger a rerun with the new page number
+                            pass
+                            
+                with col3:
+                    if page_number < total_pages:
+                        if st.button("Next ➡️"):
+                            # This will trigger a rerun with the new page number
+                            pass
