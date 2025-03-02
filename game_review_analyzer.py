@@ -2328,33 +2328,4 @@ if __name__ == "__main__":
     if not WORDCLOUD_AVAILABLE:
         print("Warning: WordCloud package not available. Word cloud visualization will be disabled.")
     
-    create_app_ui() buttons at the bottom
-                col1, col2, col3 = st.columns([1, 3, 1])
-                
-                with col1:
-                    if page_number > 1:
-                        if st.button("⬅️ Previous"):
-                            # This will trigger a rerun with the previous page
-                            pass
-                
-                with col3:
-                    if page_number < total_pages:
-                        if st.button("Next ➡️"):
-                            # This will trigger a rerun with the next page
-                            pass
-            
-            except Exception as e:
-                st.error("Error filtering reviews: {}".format(e))
-
-if __name__ == "__main__":
-    # Check if required packages are installed
-    if not NLTK_AVAILABLE:
-        print("Warning: NLTK components not available. Using basic text processing.")
-    
-    if not GOOGLE_PLAY_SCRAPER_AVAILABLE:
-        print("Warning: Google Play Scraper not available. Google Play analysis will be disabled.")
-    
-    if not WORDCLOUD_AVAILABLE:
-        print("Warning: WordCloud package not available. Word cloud visualization will be disabled.")
-    
     create_app_ui()
