@@ -723,6 +723,8 @@ class EnhancedGameReviewAnalyzer:
                         
                         # Check if we have entries in the response
                         entries = data.get('feed', {}).get('entry', [])
+                        print(f"DEBUG: Page {page}, got {len(entries)-1 if len(entries) > 1 else 0} reviews")
+                        print(f"DEBUG: Total reviews so far: {len(all_reviews)}")
                         
                         # The first entry is metadata, not a review
                         if len(entries) > 1:
@@ -801,6 +803,10 @@ class EnhancedGameReviewAnalyzer:
                         count=batch_size,
                         continuation_token=continuation_token
                     )
+
+                    print(f"DEBUG: Batch {batch_count}, got {len(result)} reviews")
+                    print(f"DEBUG: Have continuation token: {continuation_token is not None}")
+                    print(f"DEBUG: Total reviews so far: {len(all_reviews)}")
                     
                     if not result:
                         break
