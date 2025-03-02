@@ -2238,7 +2238,7 @@ def create_app_ui():
                 
             search_term = st.text_input("Search in Reviews", "")
             
-            # UPDATED: Improved paginated display
+            # UPDATED: Paginated display
             page_size = st.selectbox("Reviews per page", [10, 20, 50, 100], index=1)
             
             # Apply filters
@@ -2255,9 +2255,9 @@ def create_app_ui():
                     title_match = filtered_df['title'].fillna('').str.contains(search_term, case=False)
                     filtered_df = filtered_df[content_match | title_match]
                 
-                # Display filters info
-                total_reviews = len(filtered_df)
-                st.write(f"Showing {total_reviews} of {len(reviews_df)} reviews")
+                # Display info about filtered results
+                total_filtered = len(filtered_df)
+                st.write(f"Showing {total_filtered} of {len(reviews_df)} reviews") {len(reviews_df)} reviews")
                 
                 # UPDATED: Implement pagination
                 total_pages = max(1, (total_reviews + page_size - 1) // page_size)
@@ -2271,10 +2271,10 @@ def create_app_ui():
                 
                 current_page_df = filtered_df.iloc[start_idx:end_idx]
                 
-                # Display reviews with memory-efficient approach
+                # Display reviews for current page
                 for idx, row in current_page_df.iterrows():
                     # Format the title - Google Play reviews may not have titles
-                    title = row['title'] if row['title'] else f"Review #{idx}"
+                    title = row['title'] if isinstance(row['title'], str) and row['title'] else f"Review #{idx}"
                     
                     # Format date based on type
                     if isinstance(row['date'], pd.Timestamp):
@@ -2286,28 +2286,29 @@ def create_app_ui():
                         except:
                             date_str = str(row['date'])
                     
+                    # Create expandable entry for each review
                     with st.expander(f"{title} ({row['rating']}⭐ - {row['sentiment'].capitalize()} - {row['store']})"):
                         st.write(f"**Date:** {date_str}")
                         
-                        if row['version'] and not pd.isna(row['version']):
+                        if 'version' in row and row['version'] and not pd.isna(row['version']):
                             st.write(f"**Version:** {row['version']}")
                             
                         st.write(f"**Author:** {row['author']}")
                         st.write(f"**Review:** {row['content']}")
                         st.write(f"**Sentiment Score:** {row['compound_score']:.2f}")
-                
-                # Add pagination controls at the bottom too
+                # Navigation buttons at the bottom
                 col1, col2, col3 = st.columns([1, 3, 1])
+                
                 with col1:
                     if page_number > 1:
                         if st.button("⬅️ Previous"):
-                            # This will trigger a rerun with the new page number
+                            # This will trigger a rerun with the previous page
                             pass
-                            
+                
                 with col3:
                     if page_number < total_pages:
                         if st.button("Next ➡️"):
-                            # This will trigger a rerun with the new page number
+                            # This will trigger a rerun with the next page
                             pass {len(reviews_df)} reviews")
                 
                 # UPDATED: Implement pagination
