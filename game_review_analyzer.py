@@ -2257,24 +2257,23 @@ def create_app_ui():
                 
                 # Display info about filtered results
                 total_filtered = len(filtered_df)
-                st.write(f"Showing {total_filtered} of {len(reviews_df)} reviews")
+                st.write("Showing {} of {} reviews".format(total_filtered, len(reviews_df)))
                 
-                # UPDATED: Implement pagination
-                total_pages = max(1, (total_reviews + page_size - 1) // page_size)
+                # Pagination controls
+                total_pages = max(1, (total_filtered + page_size - 1) // page_size)
                 page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
                 
-                st.write(f"Page {page_number} of {total_pages}")
+                st.write("Page {} of {}".format(page_number, total_pages))
                 
-                # Get current page reviews
+                # Get current page of reviews
                 start_idx = (page_number - 1) * page_size
-                end_idx = min(start_idx + page_size, total_reviews)
-                
+                end_idx = min(start_idx + page_size, total_filtered)
                 current_page_df = filtered_df.iloc[start_idx:end_idx]
                 
                 # Display reviews for current page
                 for idx, row in current_page_df.iterrows():
                     # Format the title - Google Play reviews may not have titles
-                    title = row['title'] if isinstance(row['title'], str) and row['title'] else f"Review #{idx}"
+                    title = row['title'] if isinstance(row['title'], str) and row['title'] else "Review #{}".format(idx)
                     
                     # Format date based on type
                     if isinstance(row['date'], pd.Timestamp):
@@ -2287,15 +2286,19 @@ def create_app_ui():
                             date_str = str(row['date'])
                     
                     # Create expandable entry for each review
-                    with st.expander(f"{title} ({row['rating']}⭐ - {row['sentiment'].capitalize()} - {row['store']})"):
-                        st.write(f"**Date:** {date_str}")
+                    rating_str = str(row['rating']) + "⭐"
+                    sentiment_str = row['sentiment'].capitalize()
+                    store_str = row['store']
+                    with st.expander("{} ({} - {} - {})".format(title, rating_str, sentiment_str, store_str)):
+                        st.write("**Date:** {}".format(date_str))
                         
                         if 'version' in row and row['version'] and not pd.isna(row['version']):
-                            st.write(f"**Version:** {row['version']}")
+                            st.write("**Version:** {}".format(row['version']))
                             
-                        st.write(f"**Author:** {row['author']}")
-                        st.write(f"**Review:** {row['content']}")
-                        st.write(f"**Sentiment Score:** {row['compound_score']:.2f}")
+                        st.write("**Author:** {}".format(row['author']))
+                        st.write("**Review:** {}".format(row['content']))
+                        st.write("**Sentiment Score:** {:.2f}".format(row['compound_score']))
+                
                 # Navigation buttons at the bottom
                 col1, col2, col3 = st.columns([1, 3, 1])
                 
@@ -2309,55 +2312,49 @@ def create_app_ui():
                     if page_number < total_pages:
                         if st.button("Next ➡️"):
                             # This will trigger a rerun with the next page
-                            pass {len(reviews_df)} reviews")
-                
-                # UPDATED: Implement pagination
-                total_pages = max(1, (total_reviews + page_size - 1) // page_size)
-                page_number = st.number_input("Page", min_value=1, max_value=total_pages, value=1, step=1)
-                
-                st.write(f"Page {page_number} of {total_pages}")
-                
-                # Get current page reviews
-                start_idx = (page_number - 1) * page_size
-                end_idx = min(start_idx + page_size, total_reviews)
-                
-                current_page_df = filtered_df.iloc[start_idx:end_idx]
-                
-                # Display reviews with memory-efficient approach
-                for idx, row in current_page_df.iterrows():
-                    # Format the title - Google Play reviews may not have titles
-                    title = row['title'] if row['title'] else f"Review #{idx}"
-                    
-                    # Format date based on type
-                    if isinstance(row['date'], pd.Timestamp):
-                        date_str = row['date'].strftime('%Y-%m-%d')
-                    else:
-                        # Handle string dates from Google Play
-                        try:
-                            date_str = pd.to_datetime(row['date']).strftime('%Y-%m-%d')
-                        except:
-                            date_str = str(row['date'])
-                    
-                    with st.expander(f"{title} ({row['rating']}⭐ - {row['sentiment'].capitalize()} - {row['store']})"):
-                        st.write(f"**Date:** {date_str}")
-                        
-                        if row['version'] and not pd.isna(row['version']):
-                            st.write(f"**Version:** {row['version']}")
-                            
-                        st.write(f"**Author:** {row['author']}")
-                        st.write(f"**Review:** {row['content']}")
-                        st.write(f"**Sentiment Score:** {row['compound_score']:.2f}")
-                
-                # Add pagination controls at the bottom too
+                            pass
+            
+            except Exception as e:
+                st.error("Error filtering reviews: {}".format(e))
+
+if __name__ == "__main__":
+    # Check if required packages are installed
+    if not NLTK_AVAILABLE:
+        print("Warning: NLTK components not available. Using basic text processing.")
+    
+    if not GOOGLE_PLAY_SCRAPER_AVAILABLE:
+        print("Warning: Google Play Scraper not available. Google Play analysis will be disabled.")
+    
+    if not WORDCLOUD_AVAILABLE:
+        print("Warning: WordCloud package not available. Word cloud visualization will be disabled.")
+    
+    create_app_ui() buttons at the bottom
                 col1, col2, col3 = st.columns([1, 3, 1])
+                
                 with col1:
                     if page_number > 1:
                         if st.button("⬅️ Previous"):
-                            # This will trigger a rerun with the new page number
+                            # This will trigger a rerun with the previous page
                             pass
-                            
+                
                 with col3:
                     if page_number < total_pages:
                         if st.button("Next ➡️"):
-                            # This will trigger a rerun with the new page number
+                            # This will trigger a rerun with the next page
                             pass
+            
+            except Exception as e:
+                st.error("Error filtering reviews: {}".format(e))
+
+if __name__ == "__main__":
+    # Check if required packages are installed
+    if not NLTK_AVAILABLE:
+        print("Warning: NLTK components not available. Using basic text processing.")
+    
+    if not GOOGLE_PLAY_SCRAPER_AVAILABLE:
+        print("Warning: Google Play Scraper not available. Google Play analysis will be disabled.")
+    
+    if not WORDCLOUD_AVAILABLE:
+        print("Warning: WordCloud package not available. Word cloud visualization will be disabled.")
+    
+    create_app_ui()
