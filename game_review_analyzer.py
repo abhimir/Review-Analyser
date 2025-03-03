@@ -813,8 +813,7 @@ class EnhancedGameReviewAnalyzer:
 
 		# Try different sort methods to get more diverse reviews
 		# Current implementation causing the error:
-		
-                sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
+		sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
 		current_sort_index = 0
 		
 		# Replace with this corrected implementation:
