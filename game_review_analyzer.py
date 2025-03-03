@@ -713,7 +713,7 @@ class EnhancedGameReviewAnalyzer:
                 
                 # App Store collection for this region
                 page = 1
-                max_pages = min(max_reviews // 50 + 1, 20)  # Limit to 20 pages per region
+                max_pages = min(max_reviews // 50 + 1, 120)  # Limit to 120 pages per region
                 empty_page_count = 0
                 
                 while page <= max_pages and len(region_reviews) + len(all_reviews) < max_reviews:
