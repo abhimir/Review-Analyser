@@ -812,7 +812,7 @@ class EnhancedGameReviewAnalyzer:
 	        retry_count = 0
 
 		# Try different sort methods to get more diverse reviews
-		# Current implementation causing the error:
+		   
 		sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
 		current_sort_index = 0
 		
