@@ -811,7 +811,7 @@ class EnhancedGameReviewAnalyzer:
 	        batch_count = 0
 	        retry_count = 0
 
-		
+		sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
 		
 	        
 	        while len(all_reviews) < max_reviews and current_sort_index < len(sort_methods):
