@@ -811,6 +811,50 @@ class EnhancedGameReviewAnalyzer:
 	        batch_count = 0
 	        retry_count = 0
 
+		# Find the following code section in your fetch_reviews method:
+
+		# Try different sort methods to get more diverse reviews
+		# Current implementation causing the error:
+		sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
+		current_sort_index = 0
+		
+		# Replace with this corrected implementation:
+		# First, check what enum values are actually available
+		try:
+		    # Print available Sort enum values to debug
+		    print(f"Available Sort values: {dir(Sort)}")
+		    
+		    # Define sort methods based on what's actually available
+		    sort_methods = []
+		    
+		    # Add values that are likely to exist in the current version
+		    if hasattr(Sort, 'NEWEST'):
+		        sort_methods.append(Sort.NEWEST)
+		    if hasattr(Sort, 'RATING'):
+		        sort_methods.append(Sort.RATING)
+		    if hasattr(Sort, 'HELPFULNESS'):  # Try this instead of RELEVANCE
+		        sort_methods.append(Sort.HELPFULNESS)
+		    if hasattr(Sort, 'MOST_RELEVANT'):  # Alternative name for relevance
+		        sort_methods.append(Sort.MOST_RELEVANT)
+		    
+		    # Fallback if none of the expected values exist
+		    if not sort_methods and hasattr(Sort, '_member_names_'):
+		        # Just use the first available sort method
+		        sort_methods = [getattr(Sort, Sort._member_names_[0])]
+		    
+		    # Final fallback
+		    if not sort_methods:
+		        # Just use None as a last resort
+		        sort_methods = [None]
+		        
+		    current_sort_index = 0
+		    
+		except Exception as e:
+		    print(f"Error setting up sort methods: {e}")
+		    # Emergency fallback - just use None
+		    sort_methods = [None]
+		    current_sort_index = 0
+
 
 		
 	        
