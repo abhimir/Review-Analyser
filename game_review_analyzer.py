@@ -664,7 +664,11 @@ class EnhancedGameReviewAnalyzer:
         else:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
-        
+    
+    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
+        return all_reviews
+     
+    
     def create_dataframe(self, reviews):
         """
         Convert review list to a pandas DataFrame
