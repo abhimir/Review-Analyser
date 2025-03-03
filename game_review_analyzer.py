@@ -665,9 +665,8 @@ class EnhancedGameReviewAnalyzer:
             print(f"Invalid store type or Google Play Scraper not available")
             return None
     
-    def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
-   
-	    """
+def fetch_reviews(self, app_id, store='appstore', country='us', language='en', max_reviews=10000):
+    	"""
 	    Enhanced review fetching method with multi-region support and improved Google Play handling
 	    
 	    Parameters:
@@ -810,9 +809,32 @@ class EnhancedGameReviewAnalyzer:
 	        continuation_token = None
 	        batch_count = 0
 	        retry_count = 0
-
-		sort_methods = [Sort.NEWEST, Sort.RATING, Sort.RELEVANCE]
-		
+	        
+	        # Try different sort methods to get more diverse reviews
+	        # Modified to handle potential API changes
+	        sort_methods = []
+	        # Check which sort methods are available
+	        if hasattr(Sort, 'NEWEST'):
+	            sort_methods.append(Sort.NEWEST)
+	        if hasattr(Sort, 'RATING'):
+	            sort_methods.append(Sort.RATING)
+	        if hasattr(Sort, 'RELEVANCE'):
+	            sort_methods.append(Sort.RELEVANCE)
+	        if hasattr(Sort, 'HELPFULNESS'):
+	            sort_methods.append(Sort.HELPFULNESS)
+	        if hasattr(Sort, 'MOST_RELEVANT'):
+	            sort_methods.append(Sort.MOST_RELEVANT)
+	            
+	        # Fallback if no methods are available
+	        if not sort_methods:
+	            # Try to get all enum values
+	            if hasattr(Sort, '__members__'):
+	                sort_methods = list(Sort.__members__.values())[:3]
+	            else:
+	                # Last resort
+	                sort_methods = [None]
+	                
+	        current_sort_index = 0
 	        
 	        while len(all_reviews) < max_reviews and current_sort_index < len(sort_methods):
 	            current_sort = sort_methods[current_sort_index]
@@ -834,7 +856,7 @@ class EnhancedGameReviewAnalyzer:
 	            # Update progress
 	            elapsed = time.time() - start_time
 	            rate = len(all_reviews) / elapsed if elapsed > 0 else 0
-	            sort_name = str(current_sort).split('.')[-1]
+	            sort_name = str(current_sort).split('.')[-1] if current_sort else "DEFAULT"
 	            progress_text.text(f"Fetching Google Play: batch {batch_count}, sort: {sort_name} ({len(all_reviews)} reviews, {rate:.1f}/sec)")
 	            
 	            try:
@@ -919,7 +941,8 @@ class EnhancedGameReviewAnalyzer:
 	    progress_text.empty()  # Clear the status message
 	        
 	    print(f"Fetched {len(all_reviews)} reviews from {store}")
-	    return all_reviews    
+	    return all_reviews
+        
         
     
     def create_dataframe(self, reviews):
